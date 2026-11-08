@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gauntlet Loop | capability probe</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+    }
+    body {
+      margin: 0;
+      padding: 1rem 1.25rem 2rem;
+      line-height: 1.4;
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0 0 0.5rem;
+    }
+    .probe-note {
+      margin: 0 0 1rem;
+      color: #8b949e;
+      font-size: 0.9rem;
+    }
+    .probe-table {
+      width: 100%;
+      max-width: 42rem;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    .probe-table th,
+    .probe-table td {
+      border: 1px solid #30363d;
+      padding: 0.5rem 0.65rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    .probe-table th {
+      background: #161b22;
+    }
+    .probe-table td.pass {
+      color: #3fb950;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+    }
+    .probe-table td.fail {
+      color: #f85149;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+    }
+    .probe-table td.detail {
+      color: #c9d1d9;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="probe-root" aria-live="polite"></div>
+  <script>
+/**
+ * Phase 0 capability probe. Prints a table of browser API availability.
+ */
+(function probeModule(global) {
+  "use strict";
+
+  /** @typedef {{ id: string, label: string, pass: boolean, detail: string }} ProbeRow */
+
+  /**
+   * @returns {ProbeRow[]}
+   */
+  function syncRows() {
+    var canvasPass = false;
+    var canvasDetail = "missing";
+    try {
+      var c = document.createElement("canvas");
+      var ctx = c.getContext("2d");
+      if (ctx) {
+        canvasPass = true;
+        canvasDetail = "getContext('2d') ok";
+      }
+    } catch (e) {
+      canvasDetail = String(e && e.message ? e.message : e);
+    }
+
+    var rafPass =
+      typeof global.requestAnimationFrame === "function" ||
+      typeof global.webkitRequestAnimationFrame === "function";
+    var rafDetail = rafPass ? "available" : "missing";
+
+    var gamepadPass = typeof navigator.getGamepads === "function";
+    var gamepadDetail = gamepadPass ? "navigator.getGamepads" : "missing";
+
+    var speechCtor =
+      global.SpeechRecognition || global.webkitSpeechRecognition || null;
+    var speechPass = speechCtor !== null;
+    var speechDetail = speechPass
+      ? global.SpeechRecognition
+        ? "SpeechRecognition"
+        : "webkitSpeechRecognition"
+      : "missing";
+
+    var gumPass = false;
+    var gumDetail = "missing";
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+      gumPass = true;
+      gumDetail = "mediaDevices.getUserMedia";
+    } else if (navigator.getUserMedia || navigator.webkitGetUserMedia) {
+      gumPass = true;
+      gumDetail = "legacy getUserMedia";
+    }
+
+    var geoPass = typeof navigator.geolocation !== "undefined" && !!navigator.geolocation;
+    var geoDetail = geoPass ? "navigator.geolocation" : "missing";
+
+    var wsPass = typeof global.WebSocket === "function";
+    var wsDetail = wsPass ? "WebSocket constructor" : "missing";
+
+    var acPass = false;
+    var acDetail = "missing";
+    if (typeof global.AudioContext === "function") {
+      acPass = true;
+      acDetail = "AudioContext";
+    } else if (typeof global.webkitAudioContext === "function") {
+      acPass = true;
+      acDetail = "webkitAudioContext";
+    }
+
+    var vvPass = typeof global.visualViewport !== "undefined";
+    var vvDetail = vvPass ? "visualViewport present" : "missing";
+
+    var touchPass =
+      "ontouchstart" in global ||
+      (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+    var touchDetail = touchPass
+      ? "ontouchstart or maxTouchPoints=" + (navigator.maxTouchPoints || 0)
+      : "no touch surface reported";
+
+    var keyPass =
+      typeof global.KeyboardEvent === "function" &&
+      typeof document.addEventListener === "function";
+    var keyDetail = keyPass
+      ? "KeyboardEvent and keydown listeners"
+      : "missing";
+
+    return [
+      { id: "canvas-2d", label: "Canvas 2D", pass: canvasPass, detail: canvasDetail },
+      {
+        id: "raf",
+        label: "requestAnimationFrame",
+        pass: rafPass,
+        detail: rafDetail,
+      },
+      { id: "gamepad", label: "Gamepad API", pass: gamepadPass, detail: gamepadDetail },
+      {
+        id: "speech",
+        label: "SpeechRecognition",
+        pass: speechPass,
+        detail: speechDetail,
+      },
+      {
+        id: "getusermedia",
+        label: "getUserMedia",
+        pass: gumPass,
+        detail: gumDetail,
+      },
+      {
+        id: "geolocation",
+        label: "navigator.geolocation",
+        pass: geoPass,
+        detail: geoDetail,
+      },
+      { id: "websocket", label: "WebSocket", pass: wsPass, detail: wsDetail },
+      { id: "audio", label: "AudioContext", pass: acPass, detail: acDetail },
+      {
+        id: "fetch-health",
+        label: "fetch /v1/health",
+        pass: false,
+        detail: "pending",
+      },
+      {
+        id: "visual-viewport",
+        label: "visualViewport",
+        pass: vvPass,
+        detail: vvDetail,
+      },
+      { id: "touch", label: "Touch events", pass: touchPass, detail: touchDetail },
+      {
+        id: "keyboard",
+        label: "Keyboard events",
+        pass: keyPass,
+        detail: keyDetail,
+      },
+    ];
+  }
+
+  /**
+   * @param {ProbeRow[]} rows
+   */
+  function renderTable(rows) {
+    var root = document.getElementById("probe-root");
+    if (!root) {
+      return;
+    }
+    var html = [
+      "<h1>Gauntlet Loop: capability probe (Phase 0)</h1>",
+      "<p class=\"probe-note\">Feature detect only. No gameplay.</p>",
+      "<table class=\"probe-table\" aria-label=\"Browser capability probe\">",
+      "<thead><tr><th>Capability</th><th>Result</th><th>Detail</th></tr></thead>",
+      "<tbody>",
+    ];
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var cls = row.pass ? "pass" : "fail";
+      var status = row.pass ? "pass" : "fail";
+      html.push(
+        "<tr data-id=\"" +
+          row.id +
+          "\"><td>" +
+          row.label +
+          "</td><td class=\"" +
+          cls +
+          "\">" +
+          status +
+          "</td><td class=\"detail\">" +
+          escapeHtml(row.detail) +
+          "</td></tr>"
+      );
+    }
+    html.push("</tbody></table>");
+    root.innerHTML = html.join("");
+  }
+
+  /**
+   * @param {string} text
+   * @returns {string}
+   */
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  /**
+   * @param {ProbeRow[]} rows
+   */
+  function updateRow(rows, id, pass, detail) {
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].id === id) {
+        rows[i].pass = pass;
+        rows[i].detail = detail;
+        break;
+      }
+    }
+    renderTable(rows);
+  }
+
+  /**
+   * @param {ProbeRow[]} rows
+   */
+  function runFetchHealth(rows) {
+    if (typeof fetch !== "function") {
+      updateRow(rows, "fetch-health", false, "fetch missing");
+      return;
+    }
+    fetch("/v1/health", { method: "GET", cache: "no-store" })
+      .then(function (res) {
+        var ok = res.ok;
+        updateRow(
+          rows,
+          "fetch-health",
+          ok,
+          "HTTP " + res.status + (ok ? " ok" : " not ok")
+        );
+      })
+      .catch(function (err) {
+        var msg = err && err.message ? err.message : String(err);
+        updateRow(rows, "fetch-health", false, msg);
+      });
+  }
+
+  function boot() {
+    var rows = syncRows();
+    renderTable(rows);
+    runFetchHealth(rows);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})(typeof window !== "undefined" ? window : globalThis);
+  </script>
+</body>
+</html>
