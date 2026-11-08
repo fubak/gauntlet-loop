@@ -13,7 +13,7 @@
     dpadLeft: 14,
     dpadRight: 15,
     fire: 0,
-    specialPrimary: 2,
+    specialPrimary: 1,
     specialAlt: 4,
   };
 

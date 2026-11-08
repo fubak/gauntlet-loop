@@ -17,6 +17,7 @@ PACK_MODULES=(
   "$ROOT/src/input-touch.js"
   "$ROOT/src/input-typed.js"
   "$ROOT/src/loop.js"
+  "$ROOT/src/ui.js"
   "$ROOT/src/main.js"
   "$ROOT/src/probe.js"
 )
@@ -143,6 +144,88 @@ cat >"$OUT" <<EOF
     }
     #touch-overlay .touch-special {
       background: rgba(37, 99, 235, 0.85);
+    }
+    #boot-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1.5rem;
+      background: rgba(10, 14, 20, 0.94);
+      text-align: center;
+    }
+    #boot-overlay h2 {
+      margin: 0;
+      font-size: 1.35rem;
+    }
+    .boot-warn {
+      max-width: 28rem;
+      margin: 0;
+      color: #fbbf24;
+      font-size: 0.95rem;
+    }
+    .boot-detail {
+      max-width: 28rem;
+      margin: 0;
+      color: #c9d1d9;
+      font-size: 0.9rem;
+    }
+    .boot-location {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      color: #e6edf3;
+    }
+    .boot-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      justify-content: center;
+    }
+    .boot-actions button {
+      min-width: 140px;
+      min-height: 48px;
+      font-size: 1rem;
+      padding: 0.55rem 1rem;
+      border-radius: 10px;
+      border: 2px solid #e6edf3;
+      background: #21262d;
+      color: #e6edf3;
+      cursor: pointer;
+    }
+    #boot-parked {
+      background: #0f766e;
+    }
+    #mode-switch {
+      position: fixed;
+      top: 0.5rem;
+      right: 0.5rem;
+      z-index: 6;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.5rem;
+      background: rgba(13, 17, 23, 0.9);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      font-size: 0.8rem;
+    }
+    #mode-switch button {
+      padding: 0.25rem 0.45rem;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #e6edf3;
+      cursor: pointer;
+    }
+    #mode-switch button:disabled {
+      opacity: 0.5;
+      cursor: default;
     }
     #probe-root h1 {
       font-size: 1.25rem;

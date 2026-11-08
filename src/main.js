@@ -1,5 +1,5 @@
 /**
- * Thin wiring: inputs, queue, mode filter, combat, sim, render.
+ * Thin wiring: UI, inputs, queue, mode filter, combat, sim, render.
  */
 (function mainModule() {
   "use strict";
@@ -24,6 +24,7 @@
     var inputTouch = globalThis.GauntletLoopInputTouch;
     var combatApi = globalThis.GauntletLoopCombat;
     var loop = globalThis.GauntletLoopLoop;
+    var uiApi = globalThis.GauntletLoopUi;
 
     if (
       !command ||
@@ -37,7 +38,8 @@
       !inputGamepad ||
       !inputTouch ||
       !combatApi ||
-      !loop
+      !loop ||
+      !uiApi
     ) {
       return;
     }
@@ -60,10 +62,15 @@
 
     var queue = command.createQueue();
     var modeState = mode.createModeState();
-    mode.setSessionMode(modeState, mode.MODE_PARKED);
 
     /** @type {{ steer: number, source: string | null }} */
     var control = { steer: 0, source: null };
+
+    /** @type {{ locationOptIn: boolean, physicalKeyboardSeen: boolean }} */
+    var session = {
+      locationOptIn: false,
+      physicalKeyboardSeen: false,
+    };
 
     var sim = simApi.createSim();
     var combat = combatApi.createCombat();
@@ -80,20 +87,10 @@
       }
     }
 
-    var touch = null;
-    touch = inputTouch.attachTouch(control, getMode, mode, mode, command, queue);
-
+    var touch = inputTouch.attachTouch(control, getMode, mode, mode, command, queue);
     var pad = inputGamepad.attachGamepad(control, getMode, mode, command, queue, {
       onConnected: function () {
-        if (touch) {
-          touch.hide();
-        }
-      },
-    });
-
-    var kb = inputKb.attachKeyboard(control, getMode, mode, command, queue, {
-      onGameplayKey: function () {
-        if (touch) {
+        if (getMode() === mode.MODE_PARKED) {
           touch.hide();
         }
       },
@@ -103,6 +100,82 @@
       parseIntent: parseIntent.parseIntent,
       onCommands: enqueueParsed,
     });
+
+    function syncInputLayers() {
+      var m = getMode();
+      if (m === mode.MODE_BOOT) {
+        typed.setVisible(false);
+        touch.hide();
+        control.steer = 0;
+        control.source = null;
+        return;
+      }
+      if (m === mode.MODE_MOTION) {
+        touch.hide();
+        control.steer = 0;
+        control.source = null;
+        if (session.physicalKeyboardSeen) {
+          typed.setVisible(true);
+        } else {
+          typed.setVisible(false);
+        }
+      } else {
+        typed.setVisible(true);
+        touch.show();
+      }
+    }
+
+    var kb = inputKb.attachKeyboard(control, getMode, mode, command, queue, {
+      onGameplayKey: function () {
+        session.physicalKeyboardSeen = true;
+        if (getMode() === mode.MODE_PARKED) {
+          touch.hide();
+        }
+        syncInputLayers();
+      },
+    });
+
+    function applyLocationFlag(optIn) {
+      session.locationOptIn = !!optIn;
+    }
+
+    var ui = null;
+
+    function enterParked(locationOptIn) {
+      applyLocationFlag(locationOptIn);
+      mode.setSessionMode(modeState, mode.MODE_PARKED);
+      syncInputLayers();
+      if (ui) {
+        ui.syncSwitchUi();
+      }
+    }
+
+    function enterMotion(locationOptIn) {
+      applyLocationFlag(locationOptIn);
+      mode.setSessionMode(modeState, mode.MODE_MOTION);
+      syncInputLayers();
+      if (ui) {
+        ui.syncSwitchUi();
+      }
+    }
+
+    ui = uiApi.attachBootUi({
+      getMode: getMode,
+      onChooseParked: function (loc) {
+        enterParked(loc);
+      },
+      onChooseMotion: function (loc) {
+        enterMotion(loc);
+      },
+      onSwitchParked: function () {
+        enterParked(session.locationOptIn);
+      },
+      onSwitchMotion: function () {
+        enterMotion(session.locationOptIn);
+      },
+    });
+
+    syncInputLayers();
 
     function runTick(dt) {
       pad.poll();
@@ -133,14 +206,27 @@
         runTick(dt);
       },
       onFrame: function () {
-        if (touch) {
-          touch.syncDisplay();
-        }
+        touch.syncDisplay();
         render.drawFrame(ctx, sim, viewport, combat);
       },
     });
 
     globalThis.GauntletLoopGame = {
+      getMode: function () {
+        return getMode();
+      },
+      getSession: function () {
+        return {
+          locationOptIn: session.locationOptIn,
+          physicalKeyboardSeen: session.physicalKeyboardSeen,
+        };
+      },
+      chooseParked: function (locationOptIn) {
+        enterParked(!!locationOptIn);
+      },
+      chooseVoiceOnly: function (locationOptIn) {
+        enterMotion(!!locationOptIn);
+      },
       getSim: function () {
         return { playerX: sim.playerX, playerY: sim.playerY };
       },
@@ -176,33 +262,16 @@
         };
       },
       isTouchVisible: function () {
-        return touch ? touch.isVisible() : false;
+        return touch.isVisible();
       },
-      showTouchOverlay: function () {
-        if (touch) {
-          touch.show();
-        }
+      isTypedVisible: function () {
+        return typed.wrapElement.style.display !== "none";
       },
       placeTestEnemies: function (specs) {
         combatApi.placeTestEnemies(combat, sim, specs);
       },
       submitTyped: function (text) {
         return typed.submitText(text);
-      },
-      applyFirstTypedCommand: function (text) {
-        var cmds = parseIntent.parseIntent(text);
-        if (cmds.length === 0) {
-          return null;
-        }
-        command.enqueue(queue, cmds[0]);
-        var drained = command.drainForTick(queue);
-        if (drained.length) {
-          var allowed = mode.filterCommand(drained[0], modeState.mode);
-          if (allowed) {
-            combatApi.handleCommand(combat, sim, allowed);
-          }
-        }
-        return combat.lockEnemyId;
       },
       tickSeconds: function (seconds) {
         var slice = 1 / 60;
@@ -221,9 +290,15 @@
       },
       injectGamepadSteer: function (axisX) {
         pad.injectTestGamepad({ axes: [axisX, 0], buttons: [] });
-        if (touch) {
+        if (getMode() === mode.MODE_PARKED) {
           touch.hide();
         }
+        pad.poll();
+      },
+      injectGamepadFire: function () {
+        pad.injectTestGamepad({ axes: [0, 0], buttons: [true] });
+        pad.poll();
+        pad.injectTestGamepad({ axes: [0, 0], buttons: [true] });
         pad.poll();
       },
       simulateGamepadDisconnect: function () {

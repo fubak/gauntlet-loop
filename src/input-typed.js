@@ -50,6 +50,10 @@
     document.body.appendChild(wrap);
 
     return {
+      wrapElement: wrap,
+      setVisible: function (show) {
+        wrap.style.display = show ? "flex" : "none";
+      },
       submitText: function (text) {
         var cmds = opts.parseIntent(text);
         if (cmds.length) {
