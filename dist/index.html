@@ -219,6 +219,20 @@
       color: #e6edf3;
       cursor: pointer;
     }
+    #room-error {
+      position: fixed;
+      right: 0.5rem;
+      bottom: 5.5rem;
+      z-index: 7;
+      display: none;
+      max-width: 14rem;
+      padding: 0.35rem 0.55rem;
+      font-size: 0.78rem;
+      color: #e2e8f0;
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid #475569;
+      border-radius: 8px;
+    }
     #session-error {
       position: fixed;
       left: 50%;
@@ -1256,6 +1270,13 @@
 
     drawRoadMarks(ctx, sim, ww, wh);
 
+    if (opts.remoteShips && opts.remoteShips.length) {
+      var ri;
+      for (ri = 0; ri < opts.remoteShips.length; ri++) {
+        drawRemoteShip(ctx, opts.remoteShips[ri], accent);
+      }
+    }
+
     var now = performance.now() / 1000;
     if (combat && combat.specialFlashUntil > now) {
       ctx.strokeStyle = "rgba(134, 239, 172, 0.45)";
@@ -1405,6 +1426,29 @@
    * @param {CanvasRenderingContext2D} ctx
    * @param {import("./sim.js").SimState} sim
    */
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ publicId: string, lane: number, shipY: number, score: number, fireFlash: boolean }} ship
+   * @param {string} accent
+   */
+  function drawRemoteShip(ctx, ship, accent) {
+    var x = ship.lane;
+    var y = ship.shipY;
+    var size = 2.6;
+    ctx.fillStyle = ship.fireFlash ? "#fca5a5" : "#94a3b8";
+    ctx.beginPath();
+    ctx.moveTo(x, y - size);
+    ctx.lineTo(x - size * 0.6, y + size * 0.35);
+    ctx.lineTo(x + size * 0.6, y + size * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "2px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(String(ship.score), x, y - size - 1.2);
+    ctx.fillText(ship.publicId.slice(0, 10), x, y + size + 2.4);
+  }
+
   function drawPlayer(ctx, sim, accent) {
     var x = sim.playerX;
     var y = sim.playerY;
@@ -3306,6 +3350,7 @@
     var timer = null;
     var lastGeoWrite = 0;
     var listeners = [];
+    var visibilityBound = false;
 
     function notify() {
       var i;
@@ -3517,8 +3562,31 @@
      * @param {boolean} optIn
      * @returns {Promise<void>}
      */
+    function bindVisibilityOnce() {
+      if (visibilityBound || typeof document === "undefined") {
+        return;
+      }
+      visibilityBound = true;
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          clearTimer();
+          return;
+        }
+        if (optedIn) {
+          fetchLocation();
+          maybeWriteGeo();
+          schedulePoll();
+        }
+      });
+    }
+
     function setOptIn(optIn) {
       optedIn = !!optIn;
+      if (optedIn) {
+        bindVisibilityOnce();
+      } else {
+        clearTimer();
+      }
       if (!sessionClient || isFixtureMode()) {
         if (!optedIn) {
           var off = emptyFix();
@@ -3526,6 +3594,9 @@
           applyFix(off);
         } else {
           fetchLocation();
+          if (typeof document !== "undefined" && !document.hidden) {
+            maybeWriteGeo();
+          }
         }
         schedulePoll();
         return Promise.resolve();
@@ -3541,7 +3612,9 @@
             return deleteFix();
           }
           return fetchLocation().then(function () {
-            maybeWriteGeo();
+            if (typeof document !== "undefined" && !document.hidden) {
+              maybeWriteGeo();
+            }
           });
         })
         .then(function () {
@@ -3552,25 +3625,7 @@
         });
     }
 
-    function onVisible() {
-      if (typeof document === "undefined") {
-        return;
-      }
-      document.addEventListener("visibilitychange", function () {
-        if (!document.hidden && optedIn) {
-          fetchLocation();
-          maybeWriteGeo();
-        }
-        if (document.hidden) {
-          clearTimer();
-        } else {
-          schedulePoll();
-        }
-      });
-    }
-
     function start(initialOptIn) {
-      onVisible();
       return setOptIn(initialOptIn);
     }
 
@@ -3615,6 +3670,444 @@
   }
 })();
 /**
+ * Client RoomPresence packing (allowlisted fields only). No location import.
+ */
+(function roomPresenceModule() {
+  "use strict";
+
+  var ALLOWLIST_KEYS = [
+    "publicId",
+    "nickname",
+    "lane",
+    "shipY",
+    "score",
+    "fireFlash",
+  ];
+
+  var FORBIDDEN_KEYS = [
+    "lat",
+    "lon",
+    "accuracyM",
+    "recordedAt",
+    "sessionId",
+    "token",
+  ];
+
+  /**
+   * @param {object | null} raw
+   * @param {string} publicId
+   * @returns {object}
+   */
+  function packPresence(raw, publicId) {
+    raw = raw || {};
+    return {
+      publicId: publicId,
+      nickname: typeof raw.nickname === "string" ? raw.nickname : "",
+      lane: typeof raw.lane === "number" ? raw.lane : 50,
+      shipY: typeof raw.shipY === "number" ? raw.shipY : 82,
+      score: typeof raw.score === "number" ? raw.score : 0,
+      fireFlash: !!raw.fireFlash,
+    };
+  }
+
+  /**
+   * Mirror server allowlist check for tests.
+   * @param {object} frame
+   * @returns {object}
+   */
+  function sanitizeForWire(frame) {
+    var out = packPresence(frame, frame.publicId || "Pilot-0000");
+    var i;
+    for (i = 0; i < FORBIDDEN_KEYS.length; i++) {
+      if (Object.prototype.hasOwnProperty.call(frame, FORBIDDEN_KEYS[i])) {
+        delete out[FORBIDDEN_KEYS[i]];
+      }
+    }
+    return out;
+  }
+
+  /**
+   * @param {object} sanitized
+   * @returns {boolean}
+   */
+  function forbiddenSurvives(sanitized) {
+    var i;
+    for (i = 0; i < FORBIDDEN_KEYS.length; i++) {
+      if (Object.prototype.hasOwnProperty.call(sanitized, FORBIDDEN_KEYS[i])) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  var api = {
+    ALLOWLIST_KEYS: ALLOWLIST_KEYS,
+    FORBIDDEN_KEYS: FORBIDDEN_KEYS,
+    packPresence: packPresence,
+    sanitizeForWire: sanitizeForWire,
+    forbiddenSurvives: forbiddenSurvives,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopRoomPresence = api;
+  }
+})();
+/**
+ * Join public room `loop`, send allowlisted presence. No location import.
+ */
+(function roomClientModule() {
+  "use strict";
+
+  var POLL_MS = 200;
+  var SEND_MIN_MS = 100;
+  var HIDDEN_IDLE_MS = 12000;
+  var ROOM_ERROR_ID = "room-error";
+
+  /**
+   * @param {object} deps
+   */
+  function createRoomClient(deps) {
+    deps = deps || {};
+    var sessionClient = deps.sessionClient || globalThis.GauntletLoopSession;
+    var packPresence =
+      (deps.packPresence && deps.packPresence.packPresence) ||
+      (globalThis.GauntletLoopRoomPresence &&
+        globalThis.GauntletLoopRoomPresence.packPresence);
+
+    var running = false;
+    var pollTimer = null;
+    var lastSend = 0;
+    var ws = null;
+    var wsReady = false;
+    var usePoll = true;
+    var hiddenSince = 0;
+    /** @type {object[]} */
+    var remoteShips = [];
+    var listeners = [];
+    var localPublicId = "";
+    var lastPresence = null;
+    var handled401 = false;
+
+    function notify() {
+      var i;
+      for (i = 0; i < listeners.length; i++) {
+        listeners[i](remoteShips);
+      }
+    }
+
+    /**
+     * @param {object[]} ships
+     */
+    function applyShips(ships) {
+      if (!Array.isArray(ships)) {
+        return;
+      }
+      var filtered = [];
+      var i;
+      for (i = 0; i < ships.length; i++) {
+        var s = ships[i];
+        if (!s || typeof s.publicId !== "string") {
+          continue;
+        }
+        if (s.publicId === localPublicId) {
+          continue;
+        }
+        filtered.push({
+          publicId: s.publicId,
+          nickname: s.nickname || "",
+          lane: typeof s.lane === "number" ? s.lane : 50,
+          shipY: typeof s.shipY === "number" ? s.shipY : 82,
+          score: typeof s.score === "number" ? s.score : 0,
+          fireFlash: !!s.fireFlash,
+        });
+      }
+      remoteShips = filtered;
+      notify();
+    }
+
+    /**
+     * @param {string | null} msg
+     */
+    function setRoomError(msg) {
+      var el = document.getElementById(ROOM_ERROR_ID);
+      if (!el) {
+        el = document.createElement("div");
+        el.id = ROOM_ERROR_ID;
+        el.setAttribute("role", "status");
+        document.body.appendChild(el);
+      }
+      if (!msg) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
+      }
+      el.textContent = msg;
+      el.style.display = "block";
+    }
+
+    function wsUrl() {
+      if (typeof location === "undefined") {
+        return "ws://127.0.0.1:8787/v1/room/loop/ws";
+      }
+      var proto = location.protocol === "https:" ? "wss:" : "ws:";
+      return proto + "//" + location.host + "/v1/room/loop/ws";
+    }
+
+    function tryWebSocket() {
+      if (typeof WebSocket === "undefined") {
+        usePoll = true;
+        return;
+      }
+      try {
+        ws = new WebSocket(wsUrl());
+        ws.addEventListener("open", function () {
+          var stored = sessionClient && sessionClient.getSession();
+          if (!stored || !stored.token) {
+            return;
+          }
+          ws.send(JSON.stringify({ type: "auth", token: stored.token }));
+        });
+        ws.addEventListener("message", function (ev) {
+          var data;
+          try {
+            data = JSON.parse(String(ev.data));
+          } catch (e) {
+            return;
+          }
+          if (data.type === "auth-ok") {
+            wsReady = true;
+            usePoll = false;
+            setRoomError(null);
+          }
+          if (data.type === "presence" && data.ships) {
+            applyShips(data.ships);
+          }
+        });
+        ws.addEventListener("close", function () {
+          wsReady = false;
+          usePoll = true;
+          schedulePoll();
+        });
+        ws.addEventListener("error", function () {
+          wsReady = false;
+          usePoll = true;
+          schedulePoll();
+        });
+      } catch (e) {
+        usePoll = true;
+      }
+    }
+
+    function clearPoll() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function schedulePoll() {
+      clearPoll();
+      if (!running || !usePoll) {
+        return;
+      }
+      pollTimer = setInterval(pollOnce, POLL_MS);
+      pollOnce();
+    }
+
+    function pollOnce() {
+      if (!sessionClient) {
+        return;
+      }
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
+      sessionClient
+        .fetchWithAuth("/v1/room/loop", { method: "GET" })
+        .then(function (res) {
+          if (res.status === 401) {
+            return handle401();
+          }
+          if (!res.ok) {
+            setRoomError("Room idle.");
+            return;
+          }
+          setRoomError(null);
+          return res.json().then(function (data) {
+            applyShips(data.ships || []);
+          });
+        })
+        .catch(function () {
+          setRoomError("Room idle.");
+        });
+    }
+
+    function handle401() {
+      if (handled401 || !sessionClient) {
+        return Promise.resolve();
+      }
+      handled401 = true;
+      return sessionClient.initSession().then(function () {
+        handled401 = false;
+        tryWebSocket();
+      });
+    }
+
+  /**
+   * @param {object} presenceFields
+   * @param {boolean} idle
+   */
+    function sendPresence(presenceFields, idle) {
+      if (!running || !sessionClient || !packPresence) {
+        return;
+      }
+      var now = Date.now();
+      if (now - lastSend < SEND_MIN_MS) {
+        return;
+      }
+      lastSend = now;
+      var stored = sessionClient.getSession();
+      if (!stored || !stored.token) {
+        return;
+      }
+      localPublicId = stored.publicId || localPublicId;
+      var body = {
+        presence: packPresence(presenceFields, localPublicId),
+        idle: !!idle,
+      };
+      lastPresence = body.presence;
+      if (ws && wsReady && ws.readyState === WebSocket.OPEN) {
+        body.type = "update";
+        ws.send(JSON.stringify(body));
+        return;
+      }
+      sessionClient
+        .fetchWithAuth("/v1/room/loop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        .then(function (res) {
+          if (res.status === 401) {
+            return handle401();
+          }
+          if (!res.ok) {
+            setRoomError("Room idle.");
+            return;
+          }
+          setRoomError(null);
+          return res.json().then(function (data) {
+            applyShips(data.ships || []);
+          });
+        })
+        .catch(function () {
+          setRoomError("Room idle.");
+        });
+    }
+
+    function bindVisibility() {
+      if (typeof document === "undefined") {
+        return;
+      }
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          hiddenSince = Date.now();
+          sendPresence(lastPresence || {}, true);
+          clearPoll();
+        } else {
+          hiddenSince = 0;
+          schedulePoll();
+          if (lastPresence) {
+            sendPresence(lastPresence, false);
+          }
+        }
+      });
+    }
+
+    function start() {
+      if (running) {
+        return;
+      }
+      running = true;
+      handled401 = false;
+      bindVisibility();
+      tryWebSocket();
+      schedulePoll();
+    }
+
+    function stop() {
+      running = false;
+      clearPoll();
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {
+          /* ignore */
+        }
+        ws = null;
+        wsReady = false;
+      }
+      if (sessionClient) {
+        sessionClient
+          .fetchWithAuth("/v1/room/loop", { method: "DELETE" })
+          .catch(function () {
+            /* ignore */
+          });
+      }
+    }
+
+    /**
+     * @param {object} presenceFields
+     */
+    function tick(presenceFields) {
+      if (!running) {
+        return;
+      }
+      if (typeof document !== "undefined" && document.hidden) {
+        if (hiddenSince && Date.now() - hiddenSince > HIDDEN_IDLE_MS) {
+          sendPresence(presenceFields, true);
+        }
+        return;
+      }
+      sendPresence(presenceFields, false);
+    }
+
+    return {
+      start: start,
+      stop: stop,
+      tick: tick,
+      getRemoteShips: function () {
+        return remoteShips;
+      },
+      subscribe: function (fn) {
+        listeners.push(fn);
+        return function () {
+          var idx = listeners.indexOf(fn);
+          if (idx >= 0) {
+            listeners.splice(idx, 1);
+          }
+        };
+      },
+      setRoomError: setRoomError,
+    };
+  }
+
+  var api = {
+    createRoomClient: createRoomClient,
+    POLL_MS: POLL_MS,
+    SEND_MIN_MS: SEND_MIN_MS,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopRoom = api;
+  }
+})();
+/**
  * Thin wiring: UI, inputs, queue, mode filter, combat, sim, render.
  */
 (function mainModule() {
@@ -3646,6 +4139,8 @@
     var terrainApi = globalThis.GauntletLoopTerrain;
     var mapApi = globalThis.GauntletLoopMap;
     var locationApi = globalThis.GauntletLoopLocation;
+    var roomApi = globalThis.GauntletLoopRoom;
+    var roomPresence = globalThis.GauntletLoopRoomPresence;
 
     if (
       !command ||
@@ -3665,7 +4160,9 @@
       !sessionClient ||
       !terrainApi ||
       !mapApi ||
-      !locationApi
+      !locationApi ||
+      !roomApi ||
+      !roomPresence
     ) {
       return;
     }
@@ -3709,6 +4206,16 @@
     locationService.subscribe(function (fix) {
       locationFix = fix;
       regionFlavor = terrainApi.regionFlavor(fix);
+    });
+
+    var roomClient = roomApi.createRoomClient({
+      sessionClient: sessionClient,
+      packPresence: roomPresence,
+    });
+    /** @type {object[]} */
+    var remoteShips = [];
+    roomClient.subscribe(function (ships) {
+      remoteShips = ships;
     });
 
     var sim = simApi.createSim();
@@ -3797,10 +4304,21 @@
 
     var ui = null;
 
+    function maybeStartRoom() {
+      if (getMode() === mode.MODE_BOOT) {
+        return;
+      }
+      if (!sessionState.session) {
+        return;
+      }
+      roomClient.start();
+    }
+
     function enterParked(locationOptIn) {
       applyLocationFlag(locationOptIn);
       mode.setSessionMode(modeState, mode.MODE_PARKED);
       syncInputLayers();
+      maybeStartRoom();
       if (ui) {
         ui.syncSwitchUi();
       }
@@ -3810,6 +4328,7 @@
       applyLocationFlag(locationOptIn);
       mode.setSessionMode(modeState, mode.MODE_MOTION);
       syncInputLayers();
+      maybeStartRoom();
       if (ui) {
         ui.syncSwitchUi();
       }
@@ -3837,9 +4356,7 @@
     var sessionState = { session: null, error: null };
     sessionClient.initSession().then(function (result) {
       sessionState = result;
-      if (session.locationOptIn) {
-        locationService.start(true);
-      }
+      maybeStartRoom();
     });
 
     function runTick(dt) {
@@ -3872,10 +4389,18 @@
       },
       onFrame: function () {
         touch.syncDisplay();
+        var nowSec = performance.now() / 1000;
+        roomClient.tick({
+          lane: sim.playerX,
+          shipY: sim.playerY,
+          score: combat.score,
+          fireFlash: combat.specialFlashUntil > nowSec,
+        });
         render.drawFrame(ctx, sim, viewport, combat, {
           flavor: regionFlavor,
           locationFix: locationFix,
           mapApi: mapApi,
+          remoteShips: remoteShips,
         });
       },
     });
@@ -3913,6 +4438,9 @@
       },
       getRegionFlavor: function () {
         return regionFlavor;
+      },
+      getRemoteShips: function () {
+        return roomClient.getRemoteShips();
       },
       remintSessionAfter401: function () {
         sessionClient.clearStored();

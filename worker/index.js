@@ -6,8 +6,10 @@ import {
   createSessionRecord,
   hashToken,
 } from "./session.js";
+import { RoomObject, sanitizePresence } from "./room.js";
+import { verifySessionToken } from "./auth.js";
 
-export { SessionObject };
+export { SessionObject, RoomObject };
 
 /**
  * @returns {Headers}
@@ -42,6 +44,14 @@ function readBearer(request) {
 function sessionStub(env, tokenHash) {
   var id = env.SESSION.idFromName(tokenHash);
   return env.SESSION.get(id);
+}
+
+/**
+ * @param {object} env
+ */
+function roomStub(env) {
+  var id = env.ROOM.idFromName("loop");
+  return env.ROOM.get(id);
 }
 
 /**
@@ -275,6 +285,94 @@ export default {
       var writerJson = await writerRes.json();
       return new Response(JSON.stringify(writerJson), {
         status: 200,
+        headers: noStoreHeaders(),
+      });
+    }
+
+    if (url.pathname === "/v1/room/loop/ws" && request.method === "GET") {
+      if (request.headers.get("Upgrade") !== "websocket") {
+        return new Response("", { status: 426, headers: noStoreHeaders() });
+      }
+      var wsReq = new Request("https://room/ws", request);
+      return roomStub(env).fetch(wsReq);
+    }
+
+    if (url.pathname === "/v1/room/loop" && request.method === "GET") {
+      var roomGetToken = readBearer(request);
+      if (!roomGetToken) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var roomGetMeta = await verifySessionToken(env, roomGetToken);
+      if (!roomGetMeta) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var snapRes = await roomStub(env).fetch(
+        new Request("https://room/snapshot", { method: "GET" })
+      );
+      var snapJson = await snapRes.json();
+      return new Response(JSON.stringify(snapJson), {
+        status: 200,
+        headers: noStoreHeaders(),
+      });
+    }
+
+    if (url.pathname === "/v1/room/loop" && request.method === "POST") {
+      var roomPostToken = readBearer(request);
+      if (!roomPostToken) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var roomPostMeta = await verifySessionToken(env, roomPostToken);
+      if (!roomPostMeta) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var roomBody = await request.json();
+      var sanitized = sanitizePresence(
+        roomBody.presence || roomBody,
+        roomPostMeta.publicId
+      );
+      var updateRes = await roomStub(env).fetch(
+        new Request("https://room/update", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Public-Id": roomPostMeta.publicId,
+          },
+          body: JSON.stringify({
+            presence: sanitized,
+            idle: !!roomBody.idle,
+          }),
+        })
+      );
+      if (!updateRes.ok) {
+        return new Response("", {
+          status: updateRes.status,
+          headers: noStoreHeaders(),
+        });
+      }
+      var updateJson = await updateRes.json();
+      return new Response(JSON.stringify(updateJson), {
+        status: 200,
+        headers: noStoreHeaders(),
+      });
+    }
+
+    if (url.pathname === "/v1/room/loop" && request.method === "DELETE") {
+      var roomDelToken = readBearer(request);
+      if (!roomDelToken) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var roomDelMeta = await verifySessionToken(env, roomDelToken);
+      if (!roomDelMeta) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var leaveRes = await roomStub(env).fetch(
+        new Request("https://room/leave", {
+          method: "POST",
+          headers: { "X-Public-Id": roomDelMeta.publicId },
+        })
+      );
+      return new Response(await leaveRes.text(), {
+        status: leaveRes.status,
         headers: noStoreHeaders(),
       });
     }

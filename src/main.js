@@ -30,6 +30,8 @@
     var terrainApi = globalThis.GauntletLoopTerrain;
     var mapApi = globalThis.GauntletLoopMap;
     var locationApi = globalThis.GauntletLoopLocation;
+    var roomApi = globalThis.GauntletLoopRoom;
+    var roomPresence = globalThis.GauntletLoopRoomPresence;
 
     if (
       !command ||
@@ -49,7 +51,9 @@
       !sessionClient ||
       !terrainApi ||
       !mapApi ||
-      !locationApi
+      !locationApi ||
+      !roomApi ||
+      !roomPresence
     ) {
       return;
     }
@@ -93,6 +97,16 @@
     locationService.subscribe(function (fix) {
       locationFix = fix;
       regionFlavor = terrainApi.regionFlavor(fix);
+    });
+
+    var roomClient = roomApi.createRoomClient({
+      sessionClient: sessionClient,
+      packPresence: roomPresence,
+    });
+    /** @type {object[]} */
+    var remoteShips = [];
+    roomClient.subscribe(function (ships) {
+      remoteShips = ships;
     });
 
     var sim = simApi.createSim();
@@ -181,10 +195,21 @@
 
     var ui = null;
 
+    function maybeStartRoom() {
+      if (getMode() === mode.MODE_BOOT) {
+        return;
+      }
+      if (!sessionState.session) {
+        return;
+      }
+      roomClient.start();
+    }
+
     function enterParked(locationOptIn) {
       applyLocationFlag(locationOptIn);
       mode.setSessionMode(modeState, mode.MODE_PARKED);
       syncInputLayers();
+      maybeStartRoom();
       if (ui) {
         ui.syncSwitchUi();
       }
@@ -194,6 +219,7 @@
       applyLocationFlag(locationOptIn);
       mode.setSessionMode(modeState, mode.MODE_MOTION);
       syncInputLayers();
+      maybeStartRoom();
       if (ui) {
         ui.syncSwitchUi();
       }
@@ -221,9 +247,7 @@
     var sessionState = { session: null, error: null };
     sessionClient.initSession().then(function (result) {
       sessionState = result;
-      if (session.locationOptIn) {
-        locationService.start(true);
-      }
+      maybeStartRoom();
     });
 
     function runTick(dt) {
@@ -256,10 +280,18 @@
       },
       onFrame: function () {
         touch.syncDisplay();
+        var nowSec = performance.now() / 1000;
+        roomClient.tick({
+          lane: sim.playerX,
+          shipY: sim.playerY,
+          score: combat.score,
+          fireFlash: combat.specialFlashUntil > nowSec,
+        });
         render.drawFrame(ctx, sim, viewport, combat, {
           flavor: regionFlavor,
           locationFix: locationFix,
           mapApi: mapApi,
+          remoteShips: remoteShips,
         });
       },
     });
@@ -297,6 +329,9 @@
       },
       getRegionFlavor: function () {
         return regionFlavor;
+      },
+      getRemoteShips: function () {
+        return roomClient.getRemoteShips();
       },
       remintSessionAfter401: function () {
         sessionClient.clearStored();

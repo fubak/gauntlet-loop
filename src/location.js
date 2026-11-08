@@ -116,6 +116,7 @@
     var timer = null;
     var lastGeoWrite = 0;
     var listeners = [];
+    var visibilityBound = false;
 
     function notify() {
       var i;
@@ -327,8 +328,31 @@
      * @param {boolean} optIn
      * @returns {Promise<void>}
      */
+    function bindVisibilityOnce() {
+      if (visibilityBound || typeof document === "undefined") {
+        return;
+      }
+      visibilityBound = true;
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          clearTimer();
+          return;
+        }
+        if (optedIn) {
+          fetchLocation();
+          maybeWriteGeo();
+          schedulePoll();
+        }
+      });
+    }
+
     function setOptIn(optIn) {
       optedIn = !!optIn;
+      if (optedIn) {
+        bindVisibilityOnce();
+      } else {
+        clearTimer();
+      }
       if (!sessionClient || isFixtureMode()) {
         if (!optedIn) {
           var off = emptyFix();
@@ -336,6 +360,9 @@
           applyFix(off);
         } else {
           fetchLocation();
+          if (typeof document !== "undefined" && !document.hidden) {
+            maybeWriteGeo();
+          }
         }
         schedulePoll();
         return Promise.resolve();
@@ -351,7 +378,9 @@
             return deleteFix();
           }
           return fetchLocation().then(function () {
-            maybeWriteGeo();
+            if (typeof document !== "undefined" && !document.hidden) {
+              maybeWriteGeo();
+            }
           });
         })
         .then(function () {
@@ -362,25 +391,7 @@
         });
     }
 
-    function onVisible() {
-      if (typeof document === "undefined") {
-        return;
-      }
-      document.addEventListener("visibilitychange", function () {
-        if (!document.hidden && optedIn) {
-          fetchLocation();
-          maybeWriteGeo();
-        }
-        if (document.hidden) {
-          clearTimer();
-        } else {
-          schedulePoll();
-        }
-      });
-    }
-
     function start(initialOptIn) {
-      onVisible();
       return setOptIn(initialOptIn);
     }
 

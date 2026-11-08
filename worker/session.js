@@ -189,6 +189,17 @@ export class SessionObject {
           if (locMeta.expiresAt) {
             await this.state.storage.setAlarm(locMeta.expiresAt);
           }
+          if (this.env.WRITER_INDEX && locMeta.writeTokenHash) {
+            var putTtl = Math.max(
+              60,
+              Math.floor((locMeta.expiresAt - Date.now()) / 1000)
+            );
+            await this.env.WRITER_INDEX.put(
+              locMeta.writeTokenHash,
+              locMeta.tokenHash,
+              { expirationTtl: putTtl }
+            );
+          }
         }
         return putRes;
       }

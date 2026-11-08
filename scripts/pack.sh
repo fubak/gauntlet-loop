@@ -23,6 +23,8 @@ PACK_MODULES=(
   "$ROOT/src/terrain.js"
   "$ROOT/src/map.js"
   "$ROOT/src/location.js"
+  "$ROOT/src/room-presence.js"
+  "$ROOT/src/room.js"
   "$ROOT/src/main.js"
   "$ROOT/src/probe.js"
 )
@@ -259,6 +261,20 @@ cat >"$OUT" <<EOF
       background: #21262d;
       color: #e6edf3;
       cursor: pointer;
+    }
+    #room-error {
+      position: fixed;
+      right: 0.5rem;
+      bottom: 5.5rem;
+      z-index: 7;
+      display: none;
+      max-width: 14rem;
+      padding: 0.35rem 0.55rem;
+      font-size: 0.78rem;
+      color: #e2e8f0;
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid #475569;
+      border-radius: 8px;
     }
     #session-error {
       position: fixed;

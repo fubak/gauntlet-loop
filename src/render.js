@@ -54,6 +54,13 @@
 
     drawRoadMarks(ctx, sim, ww, wh);
 
+    if (opts.remoteShips && opts.remoteShips.length) {
+      var ri;
+      for (ri = 0; ri < opts.remoteShips.length; ri++) {
+        drawRemoteShip(ctx, opts.remoteShips[ri], accent);
+      }
+    }
+
     var now = performance.now() / 1000;
     if (combat && combat.specialFlashUntil > now) {
       ctx.strokeStyle = "rgba(134, 239, 172, 0.45)";
@@ -203,6 +210,29 @@
    * @param {CanvasRenderingContext2D} ctx
    * @param {import("./sim.js").SimState} sim
    */
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ publicId: string, lane: number, shipY: number, score: number, fireFlash: boolean }} ship
+   * @param {string} accent
+   */
+  function drawRemoteShip(ctx, ship, accent) {
+    var x = ship.lane;
+    var y = ship.shipY;
+    var size = 2.6;
+    ctx.fillStyle = ship.fireFlash ? "#fca5a5" : "#94a3b8";
+    ctx.beginPath();
+    ctx.moveTo(x, y - size);
+    ctx.lineTo(x - size * 0.6, y + size * 0.35);
+    ctx.lineTo(x + size * 0.6, y + size * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "2px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(String(ship.score), x, y - size - 1.2);
+    ctx.fillText(ship.publicId.slice(0, 10), x, y + size + 2.4);
+  }
+
   function drawPlayer(ctx, sim, accent) {
     var x = sim.playerX;
     var y = sim.playerY;
