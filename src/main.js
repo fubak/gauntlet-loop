@@ -26,6 +26,7 @@
     var combatApi = globalThis.GauntletLoopCombat;
     var loop = globalThis.GauntletLoopLoop;
     var uiApi = globalThis.GauntletLoopUi;
+    var sessionClient = globalThis.GauntletLoopSession;
 
     if (
       !command ||
@@ -41,7 +42,8 @@
       !inputVoice ||
       !combatApi ||
       !loop ||
-      !uiApi
+      !uiApi ||
+      !sessionClient
     ) {
       return;
     }
@@ -195,6 +197,12 @@
 
     syncInputLayers();
 
+    /** @type {{ session: object | null, error: string | null }} */
+    var sessionState = { session: null, error: null };
+    sessionClient.initSession().then(function (result) {
+      sessionState = result;
+    });
+
     function runTick(dt) {
       pad.poll();
       var cmds = command.drainForTick(queue);
@@ -238,6 +246,28 @@
           locationOptIn: session.locationOptIn,
           physicalKeyboardSeen: session.physicalKeyboardSeen,
         };
+      },
+      getAuthSession: function () {
+        var stored = sessionClient.getSession();
+        if (!stored) {
+          return null;
+        }
+        return {
+          sessionId: stored.sessionId,
+          publicId: stored.publicId,
+          expiresAt: stored.expiresAt,
+          hasToken: !!stored.token,
+        };
+      },
+      getSessionWire: function () {
+        return {
+          client: sessionState,
+          stored: sessionClient.getSession(),
+        };
+      },
+      remintSessionAfter401: function () {
+        sessionClient.clearStored();
+        return sessionClient.initSession();
       },
       chooseParked: function (locationOptIn) {
         enterParked(!!locationOptIn);

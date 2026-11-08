@@ -1,0 +1,25 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "Gauntlet Loop: Tesla-browser highway shooter",
+  "main": "index.js",
+  "scripts": {
+    "test": "node src/parse-intent.test.js",
+    "pack": "./scripts/pack.sh",
+    "dev:worker": "wrangler dev --port 8787 --local-protocol http"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fubak/gauntlet-loop.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/fubak/gauntlet-loop/issues"
+  },
+  "homepage": "https://github.com/fubak/gauntlet-loop#readme",
+  "devDependencies": {
+    "wrangler": "^3.114.17"
+  }
+}

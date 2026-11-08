@@ -19,6 +19,7 @@ PACK_MODULES=(
   "$ROOT/src/input-voice.js"
   "$ROOT/src/loop.js"
   "$ROOT/src/ui.js"
+  "$ROOT/src/session.js"
   "$ROOT/src/main.js"
   "$ROOT/src/probe.js"
 )
@@ -255,6 +256,21 @@ cat >"$OUT" <<EOF
       background: #21262d;
       color: #e6edf3;
       cursor: pointer;
+    }
+    #session-error {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      top: 3.25rem;
+      z-index: 7;
+      display: none;
+      max-width: 22rem;
+      padding: 0.4rem 0.65rem;
+      font-size: 0.82rem;
+      color: #fecaca;
+      background: rgba(127, 29, 29, 0.92);
+      border: 1px solid #991b1b;
+      border-radius: 8px;
     }
     #probe-root h1 {
       font-size: 1.25rem;
