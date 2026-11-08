@@ -15,8 +15,16 @@
    * @param {import("./sim.js").SimState} sim
    * @param {import("./resize.js").Viewport} viewport
    * @param {import("./combat.js").CombatState} combat
+   * @param {{ flavor?: { shoulder: string, road: string, sky: string, accent: string }, locationFix?: object, mapApi?: { drawOwnerMap: Function } }} [opts]
    */
-  function drawFrame(ctx, sim, viewport, combat) {
+  function drawFrame(ctx, sim, viewport, combat, opts) {
+    opts = opts || {};
+    var flavor = opts.flavor;
+    var sky = flavor && flavor.sky ? flavor.sky : "#0a0e14";
+    var shoulder = flavor && flavor.shoulder ? flavor.shoulder : "#1e242d";
+    var road = flavor && flavor.road ? flavor.road : "#3d4450";
+    var accent = flavor && flavor.accent ? flavor.accent : "#5eead4";
+
     var w = viewport.cssWidth;
     var h = viewport.cssHeight;
     var s = viewport.worldScale;
@@ -27,28 +35,28 @@
 
     ctx.save();
     ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
-    ctx.fillStyle = "#0a0e14";
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
     ctx.save();
     ctx.translate(ox, oy);
     ctx.scale(s, s);
 
-    ctx.fillStyle = "#2a2f38";
+    ctx.fillStyle = road;
     ctx.fillRect(0, 0, ww, wh);
 
-    ctx.fillStyle = "#1e242d";
+    ctx.fillStyle = shoulder;
     ctx.fillRect(8, 0, 14, wh);
     ctx.fillRect(ww - 22, 0, 14, wh);
 
-    ctx.fillStyle = "#3d4450";
+    ctx.fillStyle = road;
     ctx.fillRect(22, 0, ww - 44, wh);
 
     drawRoadMarks(ctx, sim, ww, wh);
 
     var now = performance.now() / 1000;
     if (combat && combat.specialFlashUntil > now) {
-      ctx.strokeStyle = "rgba(94, 234, 212, 0.45)";
+      ctx.strokeStyle = "rgba(134, 239, 172, 0.45)";
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.arc(sim.playerX, sim.playerY, 12, 0, Math.PI * 2);
@@ -72,9 +80,14 @@
       }
     }
 
-    drawPlayer(ctx, sim);
+    drawPlayer(ctx, sim, accent);
 
     ctx.restore();
+
+    if (opts.mapApi && opts.locationFix && opts.flavor) {
+      opts.mapApi.drawOwnerMap(ctx, w, h, opts.locationFix, opts.flavor);
+    }
+
     ctx.restore();
   }
 
@@ -190,11 +203,11 @@
    * @param {CanvasRenderingContext2D} ctx
    * @param {import("./sim.js").SimState} sim
    */
-  function drawPlayer(ctx, sim) {
+  function drawPlayer(ctx, sim, accent) {
     var x = sim.playerX;
     var y = sim.playerY;
     var size = 3.2;
-    ctx.fillStyle = "#5eead4";
+    ctx.fillStyle = accent || "#5eead4";
     ctx.beginPath();
     ctx.moveTo(x, y - size);
     ctx.lineTo(x - size * 0.65, y + size * 0.4);

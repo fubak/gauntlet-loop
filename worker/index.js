@@ -1,5 +1,5 @@
 /**
- * Gauntlet Loop Worker: health, session API, static packed game.
+ * Gauntlet Loop Worker: health, session API, location, static packed game.
  */
 import {
   SessionObject,
@@ -36,12 +36,50 @@ function readBearer(request) {
 }
 
 /**
- * @param {Request} request
+ * @param {object} env
  * @param {string} tokenHash
  */
 function sessionStub(env, tokenHash) {
   var id = env.SESSION.idFromName(tokenHash);
   return env.SESSION.get(id);
+}
+
+/**
+ * @param {object} env
+ * @param {string} bearer
+ * @returns {Promise<object>}
+ */
+async function routeStub(env, bearer) {
+  var tokenHash = await hashToken(bearer);
+  var routeHash = tokenHash;
+  if (env.WRITER_INDEX) {
+    var mapped = await env.WRITER_INDEX.get(tokenHash);
+    if (mapped) {
+      routeHash = mapped;
+    }
+  }
+  return sessionStub(env, routeHash);
+}
+
+/**
+ * @param {object} env
+ * @param {string} bearer
+ * @param {string} path
+ * @param {string} method
+ * @param {object} [body]
+ * @returns {Promise<Response>}
+ */
+async function forwardSession(env, bearer, path, method, body) {
+  var stub = await routeStub(env, bearer);
+  var headers = {
+    Authorization: "Bearer " + bearer,
+    "Content-Type": "application/json",
+  };
+  var init = { method: method, headers: headers };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return stub.fetch(new Request("https://session" + path, init));
 }
 
 export default {
@@ -109,6 +147,133 @@ export default {
       }
       var meta = await authRes.json();
       return new Response(JSON.stringify(meta), {
+        status: 200,
+        headers: noStoreHeaders(),
+      });
+    }
+
+    if (
+      url.pathname === "/v1/session/location-opt-in" &&
+      request.method === "PUT"
+    ) {
+      var optToken = readBearer(request);
+      if (!optToken) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var optBody = await request.json();
+      var optHash = await hashToken(optToken);
+      var optStub = sessionStub(env, optHash);
+      var optRes = await optStub.fetch(
+        new Request("https://session/opt-in", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tokenHash: optHash,
+            locationOptIn: !!optBody.locationOptIn,
+          }),
+        })
+      );
+      if (optRes.status === 401) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      if (!optRes.ok) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var optJson = await optRes.json();
+      return new Response(JSON.stringify(optJson), {
+        status: 200,
+        headers: noStoreHeaders(),
+      });
+    }
+
+    if (url.pathname === "/v1/location" && request.method === "GET") {
+      var getToken = readBearer(request);
+      if (!getToken) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var getRes = await forwardSession(env, getToken, "/location", "GET");
+      if (getRes.status === 401) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var getJson = await getRes.json();
+      return new Response(JSON.stringify(getJson), {
+        status: getRes.status,
+        headers: noStoreHeaders(),
+      });
+    }
+
+    if (url.pathname === "/v1/location" && request.method === "PUT") {
+      var putToken = readBearer(request);
+      if (!putToken) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var putBody = await request.json();
+      var putRes = await forwardSession(
+        env,
+        putToken,
+        "/location",
+        "PUT",
+        putBody
+      );
+      if (putRes.status === 401) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      if (!putRes.ok) {
+        return new Response("", {
+          status: putRes.status,
+          headers: noStoreHeaders(),
+        });
+      }
+      var putJson = await putRes.json();
+      return new Response(JSON.stringify(putJson), {
+        status: 200,
+        headers: noStoreHeaders(),
+      });
+    }
+
+    if (url.pathname === "/v1/location" && request.method === "DELETE") {
+      var delToken = readBearer(request);
+      if (!delToken) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var delRes = await forwardSession(env, delToken, "/location", "DELETE");
+      if (delRes.status === 401) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var delJson = await delRes.json();
+      return new Response(JSON.stringify(delJson), {
+        status: delRes.status,
+        headers: noStoreHeaders(),
+      });
+    }
+
+    if (
+      url.pathname === "/v1/location/writer" &&
+      request.method === "POST"
+    ) {
+      var writerToken = readBearer(request);
+      if (!writerToken) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      var writerHash = await hashToken(writerToken);
+      var writerStub = sessionStub(env, writerHash);
+      var writerRes = await writerStub.fetch(
+        new Request("https://session/location/writer", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + writerToken },
+        })
+      );
+      if (writerRes.status === 401) {
+        return new Response("", { status: 401, headers: noStoreHeaders() });
+      }
+      if (!writerRes.ok) {
+        return new Response("", {
+          status: writerRes.status,
+          headers: noStoreHeaders(),
+        });
+      }
+      var writerJson = await writerRes.json();
+      return new Response(JSON.stringify(writerJson), {
         status: 200,
         headers: noStoreHeaders(),
       });

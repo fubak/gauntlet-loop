@@ -1217,8 +1217,16 @@
    * @param {import("./sim.js").SimState} sim
    * @param {import("./resize.js").Viewport} viewport
    * @param {import("./combat.js").CombatState} combat
+   * @param {{ flavor?: { shoulder: string, road: string, sky: string, accent: string }, locationFix?: object, mapApi?: { drawOwnerMap: Function } }} [opts]
    */
-  function drawFrame(ctx, sim, viewport, combat) {
+  function drawFrame(ctx, sim, viewport, combat, opts) {
+    opts = opts || {};
+    var flavor = opts.flavor;
+    var sky = flavor && flavor.sky ? flavor.sky : "#0a0e14";
+    var shoulder = flavor && flavor.shoulder ? flavor.shoulder : "#1e242d";
+    var road = flavor && flavor.road ? flavor.road : "#3d4450";
+    var accent = flavor && flavor.accent ? flavor.accent : "#5eead4";
+
     var w = viewport.cssWidth;
     var h = viewport.cssHeight;
     var s = viewport.worldScale;
@@ -1229,28 +1237,28 @@
 
     ctx.save();
     ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
-    ctx.fillStyle = "#0a0e14";
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
     ctx.save();
     ctx.translate(ox, oy);
     ctx.scale(s, s);
 
-    ctx.fillStyle = "#2a2f38";
+    ctx.fillStyle = road;
     ctx.fillRect(0, 0, ww, wh);
 
-    ctx.fillStyle = "#1e242d";
+    ctx.fillStyle = shoulder;
     ctx.fillRect(8, 0, 14, wh);
     ctx.fillRect(ww - 22, 0, 14, wh);
 
-    ctx.fillStyle = "#3d4450";
+    ctx.fillStyle = road;
     ctx.fillRect(22, 0, ww - 44, wh);
 
     drawRoadMarks(ctx, sim, ww, wh);
 
     var now = performance.now() / 1000;
     if (combat && combat.specialFlashUntil > now) {
-      ctx.strokeStyle = "rgba(94, 234, 212, 0.45)";
+      ctx.strokeStyle = "rgba(134, 239, 172, 0.45)";
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.arc(sim.playerX, sim.playerY, 12, 0, Math.PI * 2);
@@ -1274,9 +1282,14 @@
       }
     }
 
-    drawPlayer(ctx, sim);
+    drawPlayer(ctx, sim, accent);
 
     ctx.restore();
+
+    if (opts.mapApi && opts.locationFix && opts.flavor) {
+      opts.mapApi.drawOwnerMap(ctx, w, h, opts.locationFix, opts.flavor);
+    }
+
     ctx.restore();
   }
 
@@ -1392,11 +1405,11 @@
    * @param {CanvasRenderingContext2D} ctx
    * @param {import("./sim.js").SimState} sim
    */
-  function drawPlayer(ctx, sim) {
+  function drawPlayer(ctx, sim, accent) {
     var x = sim.playerX;
     var y = sim.playerY;
     var size = 3.2;
-    ctx.fillStyle = "#5eead4";
+    ctx.fillStyle = accent || "#5eead4";
     ctx.beginPath();
     ctx.moveTo(x, y - size);
     ctx.lineTo(x - size * 0.65, y + size * 0.4);
@@ -2962,6 +2975,646 @@
   }
 })();
 /**
+ * RegionFlavor from owner fix only: palette and short label.
+ */
+(function terrainModule() {
+  "use strict";
+
+  var GENERIC = {
+    id: "generic",
+    label: "Highway",
+    shoulder: "#1e242d",
+    road: "#3d4450",
+    sky: "#0a0e14",
+    accent: "#5eead4",
+  };
+
+  /** @type {Array<{ id: string, label: string, minLat: number, maxLat: number, minLon: number, maxLon: number, shoulder: string, road: string, sky: string, accent: string }>} */
+  var REGIONS = [
+    {
+      id: "i85-huntsville",
+      label: "I-85 toward Huntsville",
+      minLat: 32.2,
+      maxLat: 35.2,
+      minLon: -87.2,
+      maxLon: -85.8,
+      shoulder: "#1a2e1f",
+      road: "#4a4f3a",
+      sky: "#0c1218",
+      accent: "#86efac",
+    },
+  ];
+
+  /**
+   * @typedef {{ lat: number | null, lon: number | null, ok: boolean, optedOut: boolean }} FixLike
+   */
+
+  /**
+   * @param {FixLike | null} fix
+   * @returns {{ id: string, label: string, shoulder: string, road: string, sky: string, accent: string }}
+   */
+  function regionFlavor(fix) {
+    if (!fix || !fix.ok || fix.optedOut) {
+      return GENERIC;
+    }
+    if (typeof fix.lat !== "number" || typeof fix.lon !== "number") {
+      return GENERIC;
+    }
+    var i;
+    for (i = 0; i < REGIONS.length; i++) {
+      var box = REGIONS[i];
+      if (
+        fix.lat >= box.minLat &&
+        fix.lat <= box.maxLat &&
+        fix.lon >= box.minLon &&
+        fix.lon <= box.maxLon
+      ) {
+        return box;
+      }
+    }
+    return GENERIC;
+  }
+
+  var api = {
+    GENERIC: GENERIC,
+    regionFlavor: regionFlavor,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopTerrain = api;
+  }
+})();
+/**
+ * Owner-only progress map: dot, region label, age string.
+ */
+(function mapModule() {
+  "use strict";
+
+  /**
+   * @typedef {{ lat: number | null, lon: number | null, recordedAt: string | null, stale: boolean, ok: boolean, optedOut: boolean, error: string | null }} LocationFix
+   */
+
+  /**
+   * @param {string | null} recordedAt
+   * @returns {string}
+   */
+  function formatAge(recordedAt) {
+    if (!recordedAt) {
+      return "age unknown";
+    }
+    var ms = Date.parse(recordedAt);
+    if (Number.isNaN(ms)) {
+      return "age unknown";
+    }
+    var mins = Math.floor((Date.now() - ms) / 60000);
+    if (mins < 1) {
+      return "just now";
+    }
+    if (mins === 1) {
+      return "1 min ago";
+    }
+    return mins + " min ago";
+  }
+
+  /**
+   * @param {LocationFix} fix
+   * @param {{ label: string }} flavor
+   * @returns {{ headline: string, age: string, dotX: number, dotY: number, showDot: boolean }}
+   */
+  function mapLayout(fix, flavor) {
+    if (fix.optedOut) {
+      return {
+        headline: "location off",
+        age: "",
+        dotX: 0.5,
+        dotY: 0.55,
+        showDot: false,
+      };
+    }
+    if (!fix.ok || fix.lat === null || fix.lon === null) {
+      return {
+        headline: "location unknown",
+        age: "",
+        dotX: 0.5,
+        dotY: 0.55,
+        showDot: false,
+      };
+    }
+    var age = formatAge(fix.recordedAt);
+    if (fix.stale) {
+      age = age + " (stale)";
+    }
+    if (fix.error) {
+      age = age + " (fetch error)";
+    }
+    return {
+      headline: flavor.label,
+      age: age,
+      dotX: 0.5,
+      dotY: 0.42,
+      showDot: true,
+    };
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} w
+   * @param {number} h
+   * @param {LocationFix} fix
+   * @param {{ label: string, accent: string }} flavor
+   */
+  function drawOwnerMap(ctx, w, h, fix, flavor) {
+    var pad = 10;
+    var boxW = Math.min(168, w * 0.38);
+    var boxH = 72;
+    var x = w - boxW - pad;
+    var y = pad + 36;
+
+    var layout = mapLayout(fix, flavor);
+
+    ctx.save();
+    ctx.fillStyle = "rgba(13, 17, 23, 0.88)";
+    ctx.strokeStyle = "#30363d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, y, boxW, boxH, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#c9d1d9";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("Your map", x + 8, y + 6);
+
+    ctx.fillStyle = "#e6edf3";
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.fillText(layout.headline, x + 8, y + 22);
+
+    if (layout.age) {
+      ctx.fillStyle = fix.stale ? "#fbbf24" : "#8b949e";
+      ctx.font = "10px system-ui, sans-serif";
+      ctx.fillText(layout.age, x + 8, y + 38);
+    }
+
+    if (layout.showDot) {
+      var dotPx = x + boxW * layout.dotX;
+      var dotPy = y + boxH * layout.dotY;
+      ctx.fillStyle = flavor.accent || "#5eead4";
+      ctx.beginPath();
+      ctx.arc(dotPx, dotPy, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#0f172a";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  var api = {
+    formatAge: formatAge,
+    mapLayout: mapLayout,
+    drawOwnerMap: drawOwnerMap,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopMap = api;
+  }
+})();
+/**
+ * Private location fetch, write, poll, and opt-out. No terrain art, no room.
+ */
+(function locationClientModule() {
+  "use strict";
+
+  var STALE_MS = 90 * 60 * 1000;
+  var POLL_MS = 5 * 60 * 1000;
+  var GEO_WRITE_MS = 5 * 60 * 1000;
+
+  /**
+   * @typedef {{
+   *   lat: number | null,
+   *   lon: number | null,
+   *   recordedAt: string | null,
+   *   fetchedAt: number,
+   *   stale: boolean,
+   *   ok: boolean,
+   *   optedOut: boolean,
+   *   error: string | null
+   * }} LocationFix
+   */
+
+  /**
+   * @returns {boolean}
+   */
+  function fixtureQueryEnabled() {
+    if (typeof location === "undefined") {
+      return false;
+    }
+    return /(?:\?|&)locationFixture=(?:1|stale)(?:&|$)/.test(location.search);
+  }
+
+  /**
+   * @returns {string}
+   */
+  function fixtureUrl() {
+    if (typeof location === "undefined") {
+      return "/fixtures/location.sample.json";
+    }
+    if (/(?:\?|&)locationFixture=stale(?:&|$)/.test(location.search)) {
+      return "/fixtures/location.stale.sample.json";
+    }
+    return "/fixtures/location.sample.json";
+  }
+
+  /**
+   * @returns {LocationFix}
+   */
+  function emptyFix() {
+    return {
+      lat: null,
+      lon: null,
+      recordedAt: null,
+      fetchedAt: 0,
+      stale: false,
+      ok: false,
+      optedOut: false,
+      error: null,
+    };
+  }
+
+  /**
+   * @param {object} wire
+   * @param {number} fetchedAt
+   * @returns {LocationFix}
+   */
+  function parseWire(wire, fetchedAt) {
+    if (!wire || typeof wire !== "object") {
+      return emptyFix();
+    }
+    var fix = emptyFix();
+    fix.fetchedAt = fetchedAt;
+    fix.optedOut = !!wire.optedOut;
+    if (wire.optedOut) {
+      fix.ok = false;
+      return fix;
+    }
+    fix.ok = !!wire.ok;
+    if (!fix.ok) {
+      return fix;
+    }
+    if (typeof wire.lat === "number" && typeof wire.lon === "number") {
+      fix.lat = wire.lat;
+      fix.lon = wire.lon;
+    }
+    fix.recordedAt =
+      typeof wire.recordedAt === "string" ? wire.recordedAt : null;
+    if (typeof wire.stale === "boolean") {
+      fix.stale = wire.stale;
+    } else if (fix.recordedAt) {
+      var rec = Date.parse(fix.recordedAt);
+      if (!Number.isNaN(rec)) {
+        fix.stale = fetchedAt - rec > STALE_MS;
+      }
+    }
+    if (typeof wire.accuracyM === "number") {
+      fix.accuracyM = wire.accuracyM;
+    }
+    return fix;
+  }
+
+  /**
+   * @param {object} deps
+   */
+  function createLocationService(deps) {
+    deps = deps || {};
+    var sessionClient = deps.sessionClient || globalThis.GauntletLoopSession;
+    function isFixtureMode() {
+      return !!deps.useFixture || fixtureQueryEnabled();
+    }
+
+    /** @type {LocationFix} */
+    var current = emptyFix();
+    var optedIn = false;
+    var timer = null;
+    var lastGeoWrite = 0;
+    var listeners = [];
+
+    function notify() {
+      var i;
+      for (i = 0; i < listeners.length; i++) {
+        listeners[i](current);
+      }
+    }
+
+    /**
+     * @param {LocationFix} next
+     */
+    function applyFix(next) {
+      current = next;
+      notify();
+    }
+
+    /**
+     * @returns {Promise<LocationFix>}
+     */
+    function loadFixture() {
+      return fetch(fixtureUrl(), { cache: "no-store" })
+        .then(function (res) {
+          if (!res.ok) {
+            throw new Error("fixture failed");
+          }
+          return res.json();
+        })
+        .then(function (wire) {
+          var parsed = parseWire(wire, Date.now());
+          applyFix(parsed);
+          return parsed;
+        })
+        .catch(function () {
+          var prev = current;
+          if (prev.ok) {
+            prev.error = "fixture fetch failed";
+            applyFix(prev);
+            return prev;
+          }
+          var fail = emptyFix();
+          fail.error = "fixture fetch failed";
+          applyFix(fail);
+          return fail;
+        });
+    }
+
+    /**
+     * @returns {Promise<LocationFix>}
+     */
+    function fetchLocation() {
+      if (!optedIn) {
+        var off = emptyFix();
+        off.optedOut = true;
+        applyFix(off);
+        return Promise.resolve(off);
+      }
+      if (isFixtureMode()) {
+        return loadFixture();
+      }
+      if (!sessionClient) {
+        var noSession = emptyFix();
+        noSession.error = "no session";
+        applyFix(noSession);
+        return Promise.resolve(noSession);
+      }
+      return sessionClient
+        .fetchWithAuth("/v1/location", { method: "GET" })
+        .then(function (res) {
+          if (res.status === 401) {
+            var unauthorized = emptyFix();
+            unauthorized.error = "unauthorized";
+            applyFix(unauthorized);
+            return unauthorized;
+          }
+          if (!res.ok) {
+            throw new Error("get failed");
+          }
+          return res.json();
+        })
+        .then(function (wire) {
+          var parsed = parseWire(wire, Date.now());
+          applyFix(parsed);
+          return parsed;
+        })
+        .catch(function () {
+          var prev = current;
+          if (prev.ok) {
+            prev.error = "poll failed";
+            applyFix(prev);
+            return prev;
+          }
+          var fail = emptyFix();
+          fail.error = "poll failed";
+          applyFix(fail);
+          return fail;
+        });
+    }
+
+    /**
+     * @param {number} lat
+     * @param {number} lon
+     * @param {number} [accuracyM]
+     * @returns {Promise<void>}
+     */
+    function putFix(lat, lon, accuracyM) {
+      if (!optedIn || !sessionClient) {
+        return Promise.resolve();
+      }
+      if (isFixtureMode()) {
+        return Promise.resolve();
+      }
+      var body = {
+        lat: lat,
+        lon: lon,
+        recordedAt: new Date().toISOString(),
+      };
+      if (typeof accuracyM === "number") {
+        body.accuracyM = accuracyM;
+      }
+      return sessionClient
+        .fetchWithAuth("/v1/location", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        .then(function (res) {
+          if (res.ok) {
+            lastGeoWrite = Date.now();
+            return fetchLocation();
+          }
+        })
+        .catch(function () {
+          /* keep last good fix */
+        });
+    }
+
+    /**
+     * @returns {Promise<void>}
+     */
+    function deleteFix() {
+      if (!sessionClient || isFixtureMode()) {
+        var cleared = emptyFix();
+        cleared.optedOut = true;
+        applyFix(cleared);
+        return Promise.resolve();
+      }
+      return sessionClient
+        .fetchWithAuth("/v1/location", { method: "DELETE" })
+        .then(function () {
+          var cleared = emptyFix();
+          cleared.optedOut = !optedIn;
+          if (!optedIn) {
+            cleared.optedOut = true;
+          }
+          applyFix(cleared);
+        })
+        .catch(function () {
+          /* ignore */
+        });
+    }
+
+    function maybeWriteGeo() {
+      if (!optedIn || isFixtureMode()) {
+        return;
+      }
+      if (typeof navigator === "undefined" || !navigator.geolocation) {
+        return;
+      }
+      if (Date.now() - lastGeoWrite < GEO_WRITE_MS) {
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          putFix(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            pos.coords.accuracy
+          );
+        },
+        function () {
+          /* permission denied */
+        },
+        { enableHighAccuracy: false, maximumAge: GEO_WRITE_MS, timeout: 12000 }
+      );
+    }
+
+    function clearTimer() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }
+
+    function schedulePoll() {
+      clearTimer();
+      if (!optedIn) {
+        return;
+      }
+      timer = setInterval(function () {
+        if (typeof document !== "undefined" && document.hidden) {
+          return;
+        }
+        fetchLocation();
+        maybeWriteGeo();
+      }, POLL_MS);
+    }
+
+    /**
+     * @param {boolean} optIn
+     * @returns {Promise<void>}
+     */
+    function setOptIn(optIn) {
+      optedIn = !!optIn;
+      if (!sessionClient || isFixtureMode()) {
+        if (!optedIn) {
+          var off = emptyFix();
+          off.optedOut = true;
+          applyFix(off);
+        } else {
+          fetchLocation();
+        }
+        schedulePoll();
+        return Promise.resolve();
+      }
+      return sessionClient
+        .fetchWithAuth("/v1/session/location-opt-in", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locationOptIn: optedIn }),
+        })
+        .then(function () {
+          if (!optedIn) {
+            return deleteFix();
+          }
+          return fetchLocation().then(function () {
+            maybeWriteGeo();
+          });
+        })
+        .then(function () {
+          schedulePoll();
+        })
+        .catch(function () {
+          schedulePoll();
+        });
+    }
+
+    function onVisible() {
+      if (typeof document === "undefined") {
+        return;
+      }
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden && optedIn) {
+          fetchLocation();
+          maybeWriteGeo();
+        }
+        if (document.hidden) {
+          clearTimer();
+        } else {
+          schedulePoll();
+        }
+      });
+    }
+
+    function start(initialOptIn) {
+      onVisible();
+      return setOptIn(initialOptIn);
+    }
+
+    return {
+      getFix: function () {
+        return current;
+      },
+      subscribe: function (fn) {
+        listeners.push(fn);
+        return function () {
+          var idx = listeners.indexOf(fn);
+          if (idx >= 0) {
+            listeners.splice(idx, 1);
+          }
+        };
+      },
+      fetchLocation: fetchLocation,
+      putFix: putFix,
+      deleteFix: deleteFix,
+      setOptIn: setOptIn,
+      start: start,
+      stop: clearTimer,
+      maybeWriteGeo: maybeWriteGeo,
+      parseWire: parseWire,
+      STALE_MS: STALE_MS,
+    };
+  }
+
+  var api = {
+    createLocationService: createLocationService,
+    parseWire: parseWire,
+    emptyFix: emptyFix,
+    STALE_MS: STALE_MS,
+    fixtureQueryEnabled: fixtureQueryEnabled,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopLocation = api;
+  }
+})();
+/**
  * Thin wiring: UI, inputs, queue, mode filter, combat, sim, render.
  */
 (function mainModule() {
@@ -2990,6 +3643,9 @@
     var loop = globalThis.GauntletLoopLoop;
     var uiApi = globalThis.GauntletLoopUi;
     var sessionClient = globalThis.GauntletLoopSession;
+    var terrainApi = globalThis.GauntletLoopTerrain;
+    var mapApi = globalThis.GauntletLoopMap;
+    var locationApi = globalThis.GauntletLoopLocation;
 
     if (
       !command ||
@@ -3006,7 +3662,10 @@
       !combatApi ||
       !loop ||
       !uiApi ||
-      !sessionClient
+      !sessionClient ||
+      !terrainApi ||
+      !mapApi ||
+      !locationApi
     ) {
       return;
     }
@@ -3038,6 +3697,19 @@
       locationOptIn: false,
       physicalKeyboardSeen: false,
     };
+
+    var locationService = locationApi.createLocationService({
+      sessionClient: sessionClient,
+    });
+    /** @type {object} */
+    var locationFix = locationApi.emptyFix();
+    /** @type {object} */
+    var regionFlavor = terrainApi.GENERIC;
+
+    locationService.subscribe(function (fix) {
+      locationFix = fix;
+      regionFlavor = terrainApi.regionFlavor(fix);
+    });
 
     var sim = simApi.createSim();
     var combat = combatApi.createCombat();
@@ -3120,6 +3792,7 @@
 
     function applyLocationFlag(optIn) {
       session.locationOptIn = !!optIn;
+      locationService.setOptIn(!!optIn);
     }
 
     var ui = null;
@@ -3164,6 +3837,9 @@
     var sessionState = { session: null, error: null };
     sessionClient.initSession().then(function (result) {
       sessionState = result;
+      if (session.locationOptIn) {
+        locationService.start(true);
+      }
     });
 
     function runTick(dt) {
@@ -3196,7 +3872,11 @@
       },
       onFrame: function () {
         touch.syncDisplay();
-        render.drawFrame(ctx, sim, viewport, combat);
+        render.drawFrame(ctx, sim, viewport, combat, {
+          flavor: regionFlavor,
+          locationFix: locationFix,
+          mapApi: mapApi,
+        });
       },
     });
 
@@ -3227,6 +3907,12 @@
           client: sessionState,
           stored: sessionClient.getSession(),
         };
+      },
+      getLocationFix: function () {
+        return locationService.getFix();
+      },
+      getRegionFlavor: function () {
+        return regionFlavor;
       },
       remintSessionAfter401: function () {
         sessionClient.clearStored();

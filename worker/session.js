@@ -2,6 +2,16 @@
  * Session Durable Object and session crypto helpers.
  */
 
+import {
+  handleLocationDelete,
+  handleLocationGet,
+  handleLocationPut,
+  handleWriterMint,
+  parseLocationWrite,
+  resolveLocationAuth,
+  setLocationOptIn,
+} from "./location.js";
+
 /** @param {ArrayBuffer} buf */
 function bufToHex(buf) {
   var bytes = new Uint8Array(buf);
@@ -74,9 +84,24 @@ var SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 export class SessionObject {
   /**
    * @param {DurableObjectState} state
+   * @param {object} env
    */
-  constructor(state) {
+  constructor(state, env) {
     this.state = state;
+    this.env = env;
+  }
+
+  /**
+   * @param {Request} request
+   * @returns {string | null}
+   */
+  readBearer(request) {
+    var header = request.headers.get("Authorization") || "";
+    var parts = header.split(" ");
+    if (parts.length !== 2 || parts[0] !== "Bearer" || !parts[1]) {
+      return null;
+    }
+    return parts[1];
   }
 
   /**
@@ -93,15 +118,15 @@ export class SessionObject {
       return new Response("ok");
     }
     if (url.pathname === "/meta" && request.method === "GET") {
-      var meta = await this.state.storage.get("meta");
-      if (!meta) {
+      var metaGet = await this.state.storage.get("meta");
+      if (!metaGet) {
         return new Response("", { status: 404 });
       }
       return Response.json({
-        sessionId: meta.sessionId,
-        publicId: meta.publicId,
-        expiresAt: meta.expiresAt,
-        locationOptIn: !!meta.locationOptIn,
+        sessionId: metaGet.sessionId,
+        publicId: metaGet.publicId,
+        expiresAt: metaGet.expiresAt,
+        locationOptIn: !!metaGet.locationOptIn,
       });
     }
     if (url.pathname === "/auth" && request.method === "POST") {
@@ -124,6 +149,75 @@ export class SessionObject {
         expiresAt: stored.expiresAt,
         locationOptIn: !!stored.locationOptIn,
       });
+    }
+    if (url.pathname === "/opt-in" && request.method === "PUT") {
+      var optBody = await request.json();
+      var optMeta = await this.state.storage.get("meta");
+      if (!optMeta || !optBody.tokenHash) {
+        return new Response("", { status: 401 });
+      }
+      if (!constantTimeEqual(optBody.tokenHash, optMeta.tokenHash)) {
+        return new Response("", { status: 401 });
+      }
+      var prevWrite = optMeta.writeTokenHash;
+      setLocationOptIn(optMeta, !!optBody.locationOptIn);
+      await this.state.storage.put("meta", optMeta);
+      if (this.env.WRITER_INDEX && prevWrite && !optMeta.writeTokenHash) {
+        await this.env.WRITER_INDEX.delete(prevWrite);
+      }
+      return Response.json({ locationOptIn: !!optMeta.locationOptIn });
+    }
+    if (url.pathname.startsWith("/location")) {
+      var bearer = this.readBearer(request);
+      var locMeta = await this.state.storage.get("meta");
+      if (!locMeta) {
+        return new Response("", { status: 401 });
+      }
+      var authKind = await resolveLocationAuth(bearer, locMeta);
+      if (!authKind) {
+        return new Response("", { status: 401 });
+      }
+      if (url.pathname === "/location" && request.method === "GET") {
+        return handleLocationGet(locMeta, authKind);
+      }
+      if (url.pathname === "/location" && request.method === "PUT") {
+        var putBody = await request.json();
+        var parsed = parseLocationWrite(putBody);
+        var putRes = handleLocationPut(locMeta, parsed);
+        if (putRes.status === 200) {
+          await this.state.storage.put("meta", locMeta);
+          if (locMeta.expiresAt) {
+            await this.state.storage.setAlarm(locMeta.expiresAt);
+          }
+        }
+        return putRes;
+      }
+      if (url.pathname === "/location" && request.method === "DELETE") {
+        var delRes = handleLocationDelete(locMeta);
+        await this.state.storage.put("meta", locMeta);
+        return delRes;
+      }
+      if (url.pathname === "/location/writer" && request.method === "POST") {
+        if (authKind !== "session") {
+          return new Response("", { status: 401 });
+        }
+        var writerRes = await handleWriterMint(locMeta);
+        if (writerRes.status === 200) {
+          await this.state.storage.put("meta", locMeta);
+          if (this.env.WRITER_INDEX && locMeta.writeTokenHash) {
+            var ttlSec = Math.max(
+              60,
+              Math.floor((locMeta.expiresAt - Date.now()) / 1000)
+            );
+            await this.env.WRITER_INDEX.put(
+              locMeta.writeTokenHash,
+              locMeta.tokenHash,
+              { expirationTtl: ttlSec }
+            );
+          }
+        }
+        return writerRes;
+      }
     }
     return new Response("", { status: 404 });
   }

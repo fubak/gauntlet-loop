@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node src/parse-intent.test.js",
     "pack": "./scripts/pack.sh",
+    "predev:worker": "mkdir -p dist/fixtures && cp -f fixtures/location.sample.json fixtures/location.stale.sample.json dist/fixtures/",
     "dev:worker": "wrangler dev --port 8787 --local-protocol http"
   },
   "repository": {

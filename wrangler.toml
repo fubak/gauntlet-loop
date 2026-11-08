@@ -13,3 +13,8 @@ class_name = "SessionObject"
 [[migrations]]
 tag = "v1"
 new_classes = ["SessionObject"]
+
+[[kv_namespaces]]
+binding = "WRITER_INDEX"
+id = "00000000000000000000000000000000"
+preview_id = "00000000000000000000000000000000"

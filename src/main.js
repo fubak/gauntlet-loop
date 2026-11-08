@@ -27,6 +27,9 @@
     var loop = globalThis.GauntletLoopLoop;
     var uiApi = globalThis.GauntletLoopUi;
     var sessionClient = globalThis.GauntletLoopSession;
+    var terrainApi = globalThis.GauntletLoopTerrain;
+    var mapApi = globalThis.GauntletLoopMap;
+    var locationApi = globalThis.GauntletLoopLocation;
 
     if (
       !command ||
@@ -43,7 +46,10 @@
       !combatApi ||
       !loop ||
       !uiApi ||
-      !sessionClient
+      !sessionClient ||
+      !terrainApi ||
+      !mapApi ||
+      !locationApi
     ) {
       return;
     }
@@ -75,6 +81,19 @@
       locationOptIn: false,
       physicalKeyboardSeen: false,
     };
+
+    var locationService = locationApi.createLocationService({
+      sessionClient: sessionClient,
+    });
+    /** @type {object} */
+    var locationFix = locationApi.emptyFix();
+    /** @type {object} */
+    var regionFlavor = terrainApi.GENERIC;
+
+    locationService.subscribe(function (fix) {
+      locationFix = fix;
+      regionFlavor = terrainApi.regionFlavor(fix);
+    });
 
     var sim = simApi.createSim();
     var combat = combatApi.createCombat();
@@ -157,6 +176,7 @@
 
     function applyLocationFlag(optIn) {
       session.locationOptIn = !!optIn;
+      locationService.setOptIn(!!optIn);
     }
 
     var ui = null;
@@ -201,6 +221,9 @@
     var sessionState = { session: null, error: null };
     sessionClient.initSession().then(function (result) {
       sessionState = result;
+      if (session.locationOptIn) {
+        locationService.start(true);
+      }
     });
 
     function runTick(dt) {
@@ -233,7 +256,11 @@
       },
       onFrame: function () {
         touch.syncDisplay();
-        render.drawFrame(ctx, sim, viewport, combat);
+        render.drawFrame(ctx, sim, viewport, combat, {
+          flavor: regionFlavor,
+          locationFix: locationFix,
+          mapApi: mapApi,
+        });
       },
     });
 
@@ -264,6 +291,12 @@
           client: sessionState,
           stored: sessionClient.getSession(),
         };
+      },
+      getLocationFix: function () {
+        return locationService.getFix();
+      },
+      getRegionFlavor: function () {
+        return regionFlavor;
       },
       remintSessionAfter401: function () {
         sessionClient.clearStored();

@@ -20,6 +20,9 @@ PACK_MODULES=(
   "$ROOT/src/loop.js"
   "$ROOT/src/ui.js"
   "$ROOT/src/session.js"
+  "$ROOT/src/terrain.js"
+  "$ROOT/src/map.js"
+  "$ROOT/src/location.js"
   "$ROOT/src/main.js"
   "$ROOT/src/probe.js"
 )
