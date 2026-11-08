@@ -5,6 +5,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/dist/index.html"
 SRC_PROBE="$ROOT/src/probe.js"
+PACK_LIBS=(
+  "$ROOT/src/command.js"
+  "$ROOT/src/mode.js"
+  "$ROOT/src/parse-intent.js"
+)
 
 mkdir -p "$ROOT/dist"
 
@@ -13,7 +18,15 @@ if [[ ! -f "$SRC_PROBE" ]]; then
   exit 1
 fi
 
+LIBS_JS=""
+for lib in "${PACK_LIBS[@]}"; do
+  if [[ -f "$lib" ]]; then
+    LIBS_JS+="$(cat "$lib")"$'\n'
+  fi
+done
+
 PROBE_JS="$(cat "$SRC_PROBE")"
+PACKED_JS="${LIBS_JS}${PROBE_JS}"
 
 cat >"$OUT" <<EOF
 <!DOCTYPE html>
@@ -81,7 +94,7 @@ cat >"$OUT" <<EOF
 <body>
   <div id="probe-root" aria-live="polite"></div>
   <script>
-${PROBE_JS}
+${PACKED_JS}
   </script>
 </body>
 </html>

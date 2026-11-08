@@ -64,6 +64,396 @@
   <div id="probe-root" aria-live="polite"></div>
   <script>
 /**
+ * Command queue: ids, enqueue, drain-for-tick. No parsing or rendering.
+ */
+(function commandModule(factory) {
+  "use strict";
+
+  /**
+   * @returns {{ nextId: number, items: import("./types.js").Command[] }}
+   */
+  function createQueue() {
+    return { nextId: 1, items: [] };
+  }
+
+  /**
+   * @param {{ nextId: number, items: import("./types.js").Command[] }} queue
+   * @param {Omit<import("./types.js").Command, "id"> & { id?: number }} partial
+   * @returns {import("./types.js").Command}
+   */
+  function enqueue(queue, partial) {
+    var cmd = {
+      id: typeof partial.id === "number" ? partial.id : queue.nextId++,
+      type: partial.type,
+      payload: partial.payload ? Object.assign({}, partial.payload) : {},
+      source: partial.source,
+      t: typeof partial.t === "number" ? partial.t : now(),
+    };
+    if (typeof partial.id !== "number") {
+      queue.nextId = Math.max(queue.nextId, cmd.id + 1);
+    }
+    queue.items.push(cmd);
+    return cmd;
+  }
+
+  /**
+   * @returns {number}
+   */
+  function now() {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+      return performance.now();
+    }
+    return Date.now();
+  }
+
+  /**
+   * @param {{ nextId: number, items: import("./types.js").Command[] }} queue
+   * @returns {import("./types.js").Command[]}
+   */
+  function drainForTick(queue) {
+    var batch = queue.items.slice();
+    queue.items.length = 0;
+    return batch;
+  }
+
+  /**
+   * @param {{ nextId: number, items: import("./types.js").Command[] }} queue
+   * @returns {number}
+   */
+  function queueLength(queue) {
+    return queue.items.length;
+  }
+
+  var api = {
+    createQueue: createQueue,
+    enqueue: enqueue,
+    drainForTick: drainForTick,
+    queueLength: queueLength,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopCommand = api;
+  }
+})(undefined);
+/**
+ * SessionMode state machine and input filter. No combat math.
+ */
+(function modeModule(factory) {
+  "use strict";
+
+  /** @type {import("./types.js").SessionMode} */
+  var MODE_BOOT = "boot";
+  /** @type {import("./types.js").SessionMode} */
+  var MODE_PARKED = "parked";
+  /** @type {import("./types.js").SessionMode} */
+  var MODE_MOTION = "motion";
+
+  /** @type {import("./types.js").CommandSource[]} */
+  var MOTION_COMMAND_SOURCES = ["voice", "typed"];
+
+  /** @type {import("./types.js").CommandSource[]} */
+  var PARKED_STEER_SOURCES = ["keyboard", "mouse", "gamepad", "touch"];
+
+  /**
+   * @returns {{ mode: import("./types.js").SessionMode }}
+   */
+  function createModeState() {
+    return { mode: MODE_BOOT };
+  }
+
+  /**
+   * @param {{ mode: import("./types.js").SessionMode }} state
+   * @param {import("./types.js").SessionMode} next
+   */
+  function setSessionMode(state, next) {
+    if (next !== MODE_BOOT && next !== MODE_PARKED && next !== MODE_MOTION) {
+      return;
+    }
+    state.mode = next;
+  }
+
+  /**
+   * @param {import("./types.js").SessionMode} mode
+   * @param {import("./types.js").CommandSource} source
+   * @returns {boolean}
+   */
+  function isCommandSourceAllowed(mode, source) {
+    if (mode === MODE_PARKED) {
+      return true;
+    }
+    if (mode === MODE_MOTION) {
+      return MOTION_COMMAND_SOURCES.indexOf(source) !== -1;
+    }
+    return false;
+  }
+
+  /**
+   * @param {import("./types.js").SessionMode} mode
+   * @param {import("./types.js").CommandSource | null} source
+   * @returns {boolean}
+   */
+  function isSteerSourceAllowed(mode, source) {
+    if (mode !== MODE_PARKED) {
+      return false;
+    }
+    if (source === null) {
+      return false;
+    }
+    return PARKED_STEER_SOURCES.indexOf(source) !== -1;
+  }
+
+  /**
+   * @param {import("./types.js").Command | null} command
+   * @param {import("./types.js").SessionMode} mode
+   * @returns {import("./types.js").Command | null}
+   */
+  function filterCommand(command, mode) {
+    if (!command) {
+      return null;
+    }
+    if (!isCommandSourceAllowed(mode, command.source)) {
+      return null;
+    }
+    return command;
+  }
+
+  /**
+   * @param {number} steer
+   * @param {import("./types.js").CommandSource | null} source
+   * @param {import("./types.js").SessionMode} mode
+   * @returns {number}
+   */
+  function filterSteer(steer, source, mode) {
+    if (!isSteerSourceAllowed(mode, source)) {
+      return 0;
+    }
+    if (steer < -1) {
+      return -1;
+    }
+    if (steer > 1) {
+      return 1;
+    }
+    return steer;
+  }
+
+  /**
+   * @param {import("./types.js").SessionMode} mode
+   * @returns {import("./types.js").ControlState}
+   */
+  function defaultControlState(mode) {
+    return {
+      steer: mode === MODE_MOTION ? 0 : 0,
+      source: null,
+    };
+  }
+
+  var api = {
+    MODE_BOOT: MODE_BOOT,
+    MODE_PARKED: MODE_PARKED,
+    MODE_MOTION: MODE_MOTION,
+    createModeState: createModeState,
+    setSessionMode: setSessionMode,
+    isCommandSourceAllowed: isCommandSourceAllowed,
+    isSteerSourceAllowed: isSteerSourceAllowed,
+    filterCommand: filterCommand,
+    filterSteer: filterSteer,
+    defaultControlState: defaultControlState,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopMode = api;
+  }
+})(undefined);
+/**
+ * Pure parseIntent(text) from the plan phrase table. No DOM, no speech.
+ */
+(function parseIntentModule(factory) {
+  "use strict";
+
+  /** @typedef {import("./types.js").EnemyColor} EnemyColor */
+  /** @typedef {import("./types.js").Command} Command */
+  /** @typedef {import("./types.js").CommandPayload} CommandPayload */
+
+  /** @type {EnemyColor[]} */
+  var COLORS = ["red", "blue", "green"];
+
+  /** @type {Record<string, boolean>} */
+  var STOPWORDS = {
+    a: true,
+    an: true,
+    and: true,
+    at: true,
+    go: true,
+    ahead: true,
+    my: true,
+    now: true,
+    one: true,
+    please: true,
+    the: true,
+    to: true,
+  };
+
+  /**
+   * @param {import("./types.js").CommandType} type
+   * @param {CommandPayload} [payload]
+   * @returns {Command}
+   */
+  function makeCommand(type, payload) {
+    return {
+      type: type,
+      payload: payload ? Object.assign({}, payload) : {},
+      source: "typed",
+    };
+  }
+
+  /**
+   * @param {string} raw
+   * @returns {string}
+   */
+  function normalize(raw) {
+    return String(raw).toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  /**
+   * @param {string} text
+   * @returns {EnemyColor | null}
+   */
+  function findColor(text) {
+    for (var i = 0; i < COLORS.length; i++) {
+      var color = COLORS[i];
+      var re = new RegExp("\\b" + color + "\\b");
+      if (re.test(text)) {
+        return color;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @param {string} text
+   * @returns {"left" | "right" | null}
+   */
+  function findSide(text) {
+    if (/\bleft\b/.test(text)) {
+      return "left";
+    }
+    if (/\bright\b/.test(text)) {
+      return "right";
+    }
+    return null;
+  }
+
+  /**
+   * @param {string} text
+   * @returns {boolean}
+   */
+  function hasFireVerb(text) {
+    return /\b(fire|shoot)\b/.test(text);
+  }
+
+  /**
+   * @param {string} norm
+   * @returns {boolean}
+   */
+  function isBareFirePhrase(norm) {
+    if (norm === "fire" || norm === "shoot") {
+      return true;
+    }
+    var tokens = norm.split(/\s+/);
+    var i;
+    for (i = 0; i < tokens.length; i++) {
+      var tok = tokens[i];
+      if (tok === "fire" || tok === "shoot") {
+        continue;
+      }
+      if (STOPWORDS[tok]) {
+        continue;
+      }
+      return false;
+    }
+    return hasFireVerb(norm);
+  }
+
+  /**
+   * @param {string} norm
+   * @returns {boolean}
+   */
+  function isSideOnlyPhrase(norm) {
+    return (
+      /\b(fire|shoot)\s+left\b/.test(norm) ||
+      /\b(fire|shoot)\s+right\b/.test(norm) ||
+      /\bleft\s+(fire|shoot)\b/.test(norm) ||
+      /\bright\s+(fire|shoot)\b/.test(norm)
+    );
+  }
+
+  /**
+   * @param {string} text
+   * @returns {Command[]}
+   */
+  function parseIntent(text) {
+    var norm = normalize(text);
+    if (!norm) {
+      return [];
+    }
+
+    if (/\bfocus\s+nearest\b/.test(norm)) {
+      return [makeCommand("focus-nearest")];
+    }
+    if (/\buse\s+special\b/.test(norm)) {
+      return [makeCommand("special")];
+    }
+    if (/\bcollect\s+all\b/.test(norm)) {
+      return [makeCommand("collect-all")];
+    }
+
+    if (!hasFireVerb(norm)) {
+      return [];
+    }
+
+    var color = findColor(norm);
+    var side = findSide(norm);
+
+    if (color && side) {
+      return [makeCommand("fire", { color: color, side: side })];
+    }
+
+    if (color) {
+      return [
+        makeCommand("target-color", { color: color }),
+        makeCommand("fire", { color: color }),
+      ];
+    }
+
+    if (isSideOnlyPhrase(norm) && side) {
+      return [makeCommand("fire", { side: side })];
+    }
+
+    if (isBareFirePhrase(norm)) {
+      return [makeCommand("fire", { side: "center" })];
+    }
+
+    return [];
+  }
+
+  var api = {
+    parseIntent: parseIntent,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopParseIntent = api;
+  }
+})(undefined);
+/**
  * Phase 0 capability probe. Prints a table of browser API availability.
  */
 (function probeModule(global) {
