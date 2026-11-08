@@ -38,3 +38,4 @@ class_name = "RoomObject"
 
 [[previews.kv_namespaces]]
 binding = "WRITER_INDEX"
+id = "4509d6eed79a4231a4b4f6815ab019cd"
