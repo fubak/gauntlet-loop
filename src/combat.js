@@ -47,6 +47,7 @@
    *   score: number,
    *   lastHitEnemyId: number | null,
    *   specialFlashUntil: number,
+   *   fireFlashUntil: number,
    *   autoSpawn: boolean
    * }} CombatState
    */
@@ -75,6 +76,7 @@
       score: 0,
       lastHitEnemyId: null,
       specialFlashUntil: 0,
+      fireFlashUntil: 0,
       autoSpawn: true,
     };
   }
@@ -278,6 +280,7 @@
       return;
     }
     combat.weaponCooldown = WEAPON_COOLDOWN;
+    combat.fireFlashUntil = performance.now() / 1000 + 0.15;
     combat.lockEnemyId = target.id;
     combat.lastHitEnemyId = target.id;
     killEnemy(combat, target);

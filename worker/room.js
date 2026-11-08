@@ -156,8 +156,13 @@ export class RoomObject {
     var body = JSON.stringify({ type: "presence", ships: ships });
     var i;
     for (i = 0; i < socks.length; i++) {
+      var ws = socks[i];
+      var attachment = ws.deserializeAttachment() || {};
+      if (!attachment.publicId) {
+        continue;
+      }
       try {
-        socks[i].send(body);
+        ws.send(body);
       } catch (e) {
         /* ignore closed */
       }

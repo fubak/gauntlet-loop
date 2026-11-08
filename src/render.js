@@ -95,6 +95,10 @@
       opts.mapApi.drawOwnerMap(ctx, w, h, opts.locationFix, opts.flavor);
     }
 
+    if (opts.cockpit && opts.cockpit.isEnabled()) {
+      opts.cockpit.drawCockpitFrame(ctx, w, h);
+    }
+
     ctx.restore();
   }
 

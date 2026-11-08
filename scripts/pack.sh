@@ -25,6 +25,8 @@ PACK_MODULES=(
   "$ROOT/src/location.js"
   "$ROOT/src/room-presence.js"
   "$ROOT/src/room.js"
+  "$ROOT/src/cockpit.js"
+  "$ROOT/src/audio.js"
   "$ROOT/src/main.js"
   "$ROOT/src/probe.js"
 )
@@ -233,6 +235,10 @@ cat >"$OUT" <<EOF
     #mode-switch button:disabled {
       opacity: 0.5;
       cursor: default;
+    }
+    #cockpit-toggle {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.4rem;
     }
     #voice-controls {
       position: fixed;

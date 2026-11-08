@@ -32,6 +32,8 @@
     var locationApi = globalThis.GauntletLoopLocation;
     var roomApi = globalThis.GauntletLoopRoom;
     var roomPresence = globalThis.GauntletLoopRoomPresence;
+    var audioApi = globalThis.GauntletLoopAudio;
+    var cockpitApi = globalThis.GauntletLoopCockpit;
 
     if (
       !command ||
@@ -53,7 +55,9 @@
       !mapApi ||
       !locationApi ||
       !roomApi ||
-      !roomPresence
+      !roomPresence ||
+      !audioApi ||
+      !cockpitApi
     ) {
       return;
     }
@@ -112,10 +116,17 @@
     var sim = simApi.createSim();
     var combat = combatApi.createCombat();
     var viewport = resize.createViewport(sim.worldWidth, sim.worldHeight);
+    var audio = audioApi.createAudio();
 
     function getMode() {
       return modeState.mode;
     }
+
+    function handleResize() {
+      resize.applyResize(canvas, viewport, ctx);
+    }
+
+    var cockpit = null;
 
     function enqueueParsed(cmds) {
       var i;
@@ -205,11 +216,20 @@
       roomClient.start();
     }
 
+    function onParkedGesture() {
+      audio.resumeOnUserGesture();
+      voice.armUserGesture();
+    }
+
     function enterParked(locationOptIn) {
+      onParkedGesture();
       applyLocationFlag(locationOptIn);
       mode.setSessionMode(modeState, mode.MODE_PARKED);
       syncInputLayers();
       maybeStartRoom();
+      if (cockpit) {
+        cockpit.syncToggleUi();
+      }
       if (ui) {
         ui.syncSwitchUi();
       }
@@ -220,10 +240,19 @@
       mode.setSessionMode(modeState, mode.MODE_MOTION);
       syncInputLayers();
       maybeStartRoom();
+      if (cockpit) {
+        cockpit.syncToggleUi();
+      }
       if (ui) {
         ui.syncSwitchUi();
       }
     }
+
+    cockpit = cockpitApi.attachCockpit({
+      getMode: getMode,
+      modeParked: mode.MODE_PARKED,
+      onResize: handleResize,
+    });
 
     ui = uiApi.attachBootUi({
       getMode: getMode,
@@ -264,10 +293,6 @@
       combatApi.step(combat, sim, dt);
     }
 
-    function handleResize() {
-      resize.applyResize(canvas, viewport, ctx);
-    }
-
     window.addEventListener("resize", handleResize);
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", handleResize);
@@ -285,13 +310,16 @@
           lane: sim.playerX,
           shipY: sim.playerY,
           score: combat.score,
-          fireFlash: combat.specialFlashUntil > nowSec,
+          fireFlash:
+            combat.fireFlashUntil > nowSec ||
+            combat.specialFlashUntil > nowSec,
         });
         render.drawFrame(ctx, sim, viewport, combat, {
           flavor: regionFlavor,
           locationFix: locationFix,
           mapApi: mapApi,
           remoteShips: remoteShips,
+          cockpit: cockpit,
         });
       },
     });
@@ -437,6 +465,24 @@
       forceVoiceUnavailable: function () {
         voice.forcePlatformUnavailable();
         voice.syncForMode();
+      },
+      getAudioState: function () {
+        return audio.getState();
+      },
+      resumeAudioOnGesture: function () {
+        audio.resumeOnUserGesture();
+      },
+      isCockpitEnabled: function () {
+        return cockpit.isEnabled();
+      },
+      toggleCockpit: function () {
+        if (getMode() !== mode.MODE_PARKED) {
+          return cockpit.isEnabled();
+        }
+        return cockpit.toggle();
+      },
+      syncCockpitUi: function () {
+        cockpit.syncToggleUi();
       },
     };
   }

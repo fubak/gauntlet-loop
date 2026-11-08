@@ -242,6 +242,11 @@
         }
         return deliverFinalTranscript(text);
       },
+      armUserGesture: function () {
+        if (voiceReady()) {
+          gestureArmed = true;
+        }
+      },
       destroy: function () {
         stopRecognition();
         wrap.remove();
