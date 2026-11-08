@@ -22,6 +22,7 @@
     var inputTyped = globalThis.GauntletLoopInputTyped;
     var inputGamepad = globalThis.GauntletLoopInputGamepad;
     var inputTouch = globalThis.GauntletLoopInputTouch;
+    var inputVoice = globalThis.GauntletLoopInputVoice;
     var combatApi = globalThis.GauntletLoopCombat;
     var loop = globalThis.GauntletLoopLoop;
     var uiApi = globalThis.GauntletLoopUi;
@@ -37,6 +38,7 @@
       !inputTyped ||
       !inputGamepad ||
       !inputTouch ||
+      !inputVoice ||
       !combatApi ||
       !loop ||
       !uiApi
@@ -87,6 +89,13 @@
       }
     }
 
+    function enqueueVoice(cmds) {
+      var i;
+      for (i = 0; i < cmds.length; i++) {
+        command.enqueue(queue, cmds[i]);
+      }
+    }
+
     var touch = inputTouch.attachTouch(control, getMode, mode, mode, command, queue);
     var pad = inputGamepad.attachGamepad(control, getMode, mode, command, queue, {
       onConnected: function () {
@@ -101,6 +110,13 @@
       onCommands: enqueueParsed,
     });
 
+    var voice = inputVoice.attachVoiceInput({
+      parseIntent: parseIntent.parseIntent,
+      onVoiceCommands: enqueueVoice,
+      getMode: getMode,
+      modeBoot: mode.MODE_BOOT,
+    });
+
     function syncInputLayers() {
       var m = getMode();
       if (m === mode.MODE_BOOT) {
@@ -108,6 +124,7 @@
         touch.hide();
         control.steer = 0;
         control.source = null;
+        voice.syncForMode();
         return;
       }
       if (m === mode.MODE_MOTION) {
@@ -123,6 +140,7 @@
         typed.setVisible(true);
         touch.show();
       }
+      voice.syncForMode();
     }
 
     var kb = inputKb.attachKeyboard(control, getMode, mode, command, queue, {
@@ -303,6 +321,24 @@
       },
       simulateGamepadDisconnect: function () {
         pad.simulateDisconnect();
+      },
+      getVoice: function () {
+        return {
+          available: voice.isAvailable(),
+          hud: voice.getHudText(),
+          listening: voice.isListening(),
+          listenVisible: voice.isListenVisible(),
+        };
+      },
+      simulateListenGesture: function () {
+        return voice.simulateListenGesture();
+      },
+      deliverVoiceTranscript: function (text) {
+        return voice.deliverFinalTranscript(text);
+      },
+      forceVoiceUnavailable: function () {
+        voice.forcePlatformUnavailable();
+        voice.syncForMode();
       },
     };
   }

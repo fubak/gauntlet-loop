@@ -16,6 +16,7 @@ PACK_MODULES=(
   "$ROOT/src/input-gamepad.js"
   "$ROOT/src/input-touch.js"
   "$ROOT/src/input-typed.js"
+  "$ROOT/src/input-voice.js"
   "$ROOT/src/loop.js"
   "$ROOT/src/ui.js"
   "$ROOT/src/main.js"
@@ -226,6 +227,34 @@ cat >"$OUT" <<EOF
     #mode-switch button:disabled {
       opacity: 0.5;
       cursor: default;
+    }
+    #voice-controls {
+      position: fixed;
+      top: 0.5rem;
+      left: 0.5rem;
+      z-index: 6;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.35rem;
+      max-width: 16rem;
+    }
+    #voice-hud {
+      font-size: 0.8rem;
+      color: #c9d1d9;
+      background: rgba(13, 17, 23, 0.9);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 0.35rem 0.5rem;
+    }
+    #voice-listen {
+      font-size: 0.85rem;
+      padding: 0.35rem 0.6rem;
+      border-radius: 8px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #e6edf3;
+      cursor: pointer;
     }
     #probe-root h1 {
       font-size: 1.25rem;
