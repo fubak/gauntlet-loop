@@ -221,7 +221,21 @@
       });
   }
 
+  function isProbeUrl() {
+    if (typeof location === "undefined") {
+      return false;
+    }
+    return /(?:\?|&)probe=1(?:&|$)/.test(location.search);
+  }
+
   function boot() {
+    if (!isProbeUrl()) {
+      return;
+    }
+    var canvas = document.getElementById("game");
+    if (canvas) {
+      canvas.style.display = "none";
+    }
     var rows = syncRows();
     renderTable(rows);
     runFetchHealth(rows);

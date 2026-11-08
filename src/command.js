@@ -45,8 +45,8 @@
   }
 
   /**
-   * @param {{ nextId: number, items: import("./types.js").Command[] }} queue
-   * @returns {import("./types.js").Command[]}
+   * @param {{ nextId: number, items: Command[] }} queue
+   * @returns {Command[]}
    */
   function drainForTick(queue) {
     var batch = queue.items.slice();
@@ -55,7 +55,7 @@
   }
 
   /**
-   * @param {{ nextId: number, items: import("./types.js").Command[] }} queue
+   * @param {{ nextId: number, items: Command[] }} queue
    * @returns {number}
    */
   function queueLength(queue) {

@@ -4,29 +4,29 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/dist/index.html"
-SRC_PROBE="$ROOT/src/probe.js"
-PACK_LIBS=(
+PACK_MODULES=(
   "$ROOT/src/command.js"
   "$ROOT/src/mode.js"
   "$ROOT/src/parse-intent.js"
+  "$ROOT/src/sim.js"
+  "$ROOT/src/render.js"
+  "$ROOT/src/resize.js"
+  "$ROOT/src/input-keyboard.js"
+  "$ROOT/src/loop.js"
+  "$ROOT/src/main.js"
+  "$ROOT/src/probe.js"
 )
 
 mkdir -p "$ROOT/dist"
 
-if [[ ! -f "$SRC_PROBE" ]]; then
-  echo "Missing $SRC_PROBE" >&2
-  exit 1
-fi
-
-LIBS_JS=""
-for lib in "${PACK_LIBS[@]}"; do
-  if [[ -f "$lib" ]]; then
-    LIBS_JS+="$(cat "$lib")"$'\n'
+PACKED_JS=""
+for mod in "${PACK_MODULES[@]}"; do
+  if [[ ! -f "$mod" ]]; then
+    echo "Missing $mod" >&2
+    exit 1
   fi
+  PACKED_JS+="$(cat "$mod")"$'\n'
 done
-
-PROBE_JS="$(cat "$SRC_PROBE")"
-PACKED_JS="${LIBS_JS}${PROBE_JS}"
 
 cat >"$OUT" <<EOF
 <!DOCTYPE html>
@@ -34,7 +34,7 @@ cat >"$OUT" <<EOF
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Gauntlet Loop | capability probe</title>
+  <title>Gauntlet Loop</title>
   <style>
     :root {
       color-scheme: dark;
@@ -42,12 +42,27 @@ cat >"$OUT" <<EOF
       background: #0d1117;
       color: #e6edf3;
     }
-    body {
+  html, body {
       margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    #game {
+      display: none;
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+    #probe-root {
+      display: none;
       padding: 1rem 1.25rem 2rem;
       line-height: 1.4;
     }
-    h1 {
+    #probe-root h1 {
       font-size: 1.25rem;
       font-weight: 600;
       margin: 0 0 0.5rem;
@@ -92,6 +107,7 @@ cat >"$OUT" <<EOF
   </style>
 </head>
 <body>
+  <canvas id="game" aria-label="Highway playfield"></canvas>
   <div id="probe-root" aria-live="polite"></div>
   <script>
 ${PACKED_JS}
