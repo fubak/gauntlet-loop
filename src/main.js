@@ -20,6 +20,8 @@
     var resize = globalThis.GauntletLoopResize;
     var inputKb = globalThis.GauntletLoopInputKeyboard;
     var inputTyped = globalThis.GauntletLoopInputTyped;
+    var inputGamepad = globalThis.GauntletLoopInputGamepad;
+    var inputTouch = globalThis.GauntletLoopInputTouch;
     var combatApi = globalThis.GauntletLoopCombat;
     var loop = globalThis.GauntletLoopLoop;
 
@@ -32,6 +34,8 @@
       !resize ||
       !inputKb ||
       !inputTyped ||
+      !inputGamepad ||
+      !inputTouch ||
       !combatApi ||
       !loop
     ) {
@@ -76,11 +80,43 @@
       }
     }
 
-    var kb = inputKb.attachKeyboard(control, getMode, mode, command, queue);
+    var touch = null;
+    touch = inputTouch.attachTouch(control, getMode, mode, mode, command, queue);
+
+    var pad = inputGamepad.attachGamepad(control, getMode, mode, command, queue, {
+      onConnected: function () {
+        if (touch) {
+          touch.hide();
+        }
+      },
+    });
+
+    var kb = inputKb.attachKeyboard(control, getMode, mode, command, queue, {
+      onGameplayKey: function () {
+        if (touch) {
+          touch.hide();
+        }
+      },
+    });
+
     var typed = inputTyped.attachTypedInput({
       parseIntent: parseIntent.parseIntent,
       onCommands: enqueueParsed,
     });
+
+    function runTick(dt) {
+      pad.poll();
+      var cmds = command.drainForTick(queue);
+      var i;
+      for (i = 0; i < cmds.length; i++) {
+        var allowed = mode.filterCommand(cmds[i], modeState.mode);
+        if (allowed) {
+          combatApi.handleCommand(combat, sim, allowed);
+        }
+      }
+      simApi.step(sim, dt, control.steer);
+      combatApi.step(combat, sim, dt);
+    }
 
     function handleResize() {
       resize.applyResize(canvas, viewport, ctx);
@@ -94,18 +130,12 @@
 
     loop.startGameLoop({
       onTick: function (dt) {
-        var cmds = command.drainForTick(queue);
-        var i;
-        for (i = 0; i < cmds.length; i++) {
-          var allowed = mode.filterCommand(cmds[i], modeState.mode);
-          if (allowed) {
-            combatApi.handleCommand(combat, sim, allowed);
-          }
-        }
-        simApi.step(sim, dt, control.steer);
-        combatApi.step(combat, sim, dt);
+        runTick(dt);
       },
       onFrame: function () {
+        if (touch) {
+          touch.syncDisplay();
+        }
         render.drawFrame(ctx, sim, viewport, combat);
       },
     });
@@ -145,6 +175,14 @@
           }),
         };
       },
+      isTouchVisible: function () {
+        return touch ? touch.isVisible() : false;
+      },
+      showTouchOverlay: function () {
+        if (touch) {
+          touch.show();
+        }
+      },
       placeTestEnemies: function (specs) {
         combatApi.placeTestEnemies(combat, sim, specs);
       },
@@ -172,16 +210,7 @@
         while (left > 0) {
           var dt = left < slice ? left : slice;
           left -= dt;
-          var cmds = command.drainForTick(queue);
-          var i;
-          for (i = 0; i < cmds.length; i++) {
-            var allowed = mode.filterCommand(cmds[i], modeState.mode);
-            if (allowed) {
-              combatApi.handleCommand(combat, sim, allowed);
-            }
-          }
-          simApi.step(sim, dt, control.steer);
-          combatApi.step(combat, sim, dt);
+          runTick(dt);
         }
       },
       pressFire: function () {
@@ -189,6 +218,16 @@
       },
       pressSpecial: function () {
         kb.pressSpecial();
+      },
+      injectGamepadSteer: function (axisX) {
+        pad.injectTestGamepad({ axes: [axisX, 0], buttons: [] });
+        if (touch) {
+          touch.hide();
+        }
+        pad.poll();
+      },
+      simulateGamepadDisconnect: function () {
+        pad.simulateDisconnect();
       },
     };
   }

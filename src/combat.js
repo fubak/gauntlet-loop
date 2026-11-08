@@ -167,17 +167,23 @@
    * @returns {Enemy | null}
    */
   function pickFireTarget(combat, sim, payload) {
-    var side = payload.side || "center";
-    if (side !== "left" && side !== "right" && side !== "center") {
-      side = "center";
-    }
+    var side = payload.side;
+    var useThird = side === "left" || side === "right";
     var color =
       payload.color !== undefined && payload.color !== null ? payload.color : null;
     var locked = getLockedEnemy(combat, sim);
-    if (!color && locked && enemyInThird(locked, side, sim.worldWidth)) {
+
+    function inCone(enemy) {
+      if (!useThird) {
+        return true;
+      }
+      return enemyInThird(enemy, side, sim.worldWidth);
+    }
+
+    if (!color && locked && inCone(locked)) {
       return locked;
     }
-    if (color && locked && locked.color === color && enemyInThird(locked, side, sim.worldWidth)) {
+    if (color && locked && locked.color === color && inCone(locked)) {
       return locked;
     }
     var best = null;
@@ -191,7 +197,7 @@
       if (color && e.color !== color) {
         continue;
       }
-      if (!enemyInThird(e, side, sim.worldWidth)) {
+      if (!inCone(e)) {
         continue;
       }
       var d = distanceAhead(e, sim);

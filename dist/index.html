@@ -63,6 +63,52 @@
       color: #e6edf3;
       cursor: pointer;
     }
+    #touch-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 4;
+    }
+    #touch-overlay .touch-steer,
+    #touch-overlay .touch-actions,
+    #touch-overlay button {
+      pointer-events: auto;
+    }
+    #touch-overlay .touch-steer {
+      width: 42vmin;
+      max-width: 280px;
+      margin: 12vh 0 10vh 0.75rem;
+      border: 3px solid #e6edf3;
+      border-radius: 18px;
+      background: rgba(33, 38, 45, 0.75);
+      touch-action: none;
+    }
+    #touch-overlay .touch-actions {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      margin: 12vh 0.75rem 10vh 0;
+    }
+    #touch-overlay button {
+      min-width: 120px;
+      min-height: 64px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border-radius: 14px;
+      border: 3px solid #e6edf3;
+      background: rgba(33, 38, 45, 0.9);
+      color: #e6edf3;
+    }
+    #touch-overlay .touch-fire {
+      background: rgba(185, 28, 28, 0.85);
+    }
+    #touch-overlay .touch-special {
+      background: rgba(37, 99, 235, 0.85);
+    }
     #probe-root h1 {
       font-size: 1.25rem;
       font-weight: 600;
@@ -752,17 +798,23 @@
    * @returns {Enemy | null}
    */
   function pickFireTarget(combat, sim, payload) {
-    var side = payload.side || "center";
-    if (side !== "left" && side !== "right" && side !== "center") {
-      side = "center";
-    }
+    var side = payload.side;
+    var useThird = side === "left" || side === "right";
     var color =
       payload.color !== undefined && payload.color !== null ? payload.color : null;
     var locked = getLockedEnemy(combat, sim);
-    if (!color && locked && enemyInThird(locked, side, sim.worldWidth)) {
+
+    function inCone(enemy) {
+      if (!useThird) {
+        return true;
+      }
+      return enemyInThird(enemy, side, sim.worldWidth);
+    }
+
+    if (!color && locked && inCone(locked)) {
       return locked;
     }
-    if (color && locked && locked.color === color && enemyInThird(locked, side, sim.worldWidth)) {
+    if (color && locked && locked.color === color && inCone(locked)) {
       return locked;
     }
     var best = null;
@@ -776,7 +828,7 @@
       if (color && e.color !== color) {
         continue;
       }
-      if (!enemyInThird(e, side, sim.worldWidth)) {
+      if (!inCone(e)) {
         continue;
       }
       var d = distanceAhead(e, sim);
@@ -1342,7 +1394,7 @@
   }
 })();
 /**
- * WASD, arrows, Space fire, E special.
+ * WASD, arrows, Space fire, E special. Ignores text fields.
  */
 (function inputKeyboardModule() {
   "use strict";
@@ -1353,16 +1405,41 @@
   var RIGHT_KEYS = { ArrowRight: true, KeyD: true, d: true };
 
   /**
+   * @param {EventTarget | null} target
+   * @returns {boolean}
+   */
+  function isTextEntryTarget(target) {
+    if (!target || !(target instanceof Element)) {
+      return false;
+    }
+    var tag = target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+      return true;
+    }
+    if (target.isContentEditable) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * @param {ControlState} control
    * @param {() => string} getMode
-   * @param {{ filterSteer: function(number, string|null, string): number, filterCommand: function(object, string): object|null }} modeApi
-   * @param {{ enqueue: function(queue: object, partial: object): object, createQueue?: never }} commandApi
-   * @param {{ drain?: never }} queue
+   * @param {{ filterSteer: function(number, string|null, string): number }} modeApi
+   * @param {{ enqueue: function(queue: object, partial: object): object }} commandApi
    * @param {object} queue
+   * @param {{ onGameplayKey?: function(): void }} [opts]
    */
-  function attachKeyboard(control, getMode, modeApi, commandApi, queue) {
+  function attachKeyboard(control, getMode, modeApi, commandApi, queue, opts) {
+    opts = opts || {};
     var heldLeft = false;
     var heldRight = false;
+
+    function notifyGameplay() {
+      if (opts.onGameplayKey) {
+        opts.onGameplayKey();
+      }
+    }
 
     function recompute() {
       var raw = 0;
@@ -1376,7 +1453,7 @@
       control.steer = steer;
       if (raw !== 0 && steer !== 0) {
         control.source = "keyboard";
-      } else if (raw === 0) {
+      } else if (raw === 0 && control.source === "keyboard") {
         control.source = null;
       }
     }
@@ -1385,13 +1462,17 @@
      * @param {KeyboardEvent} ev
      */
     function onKeyDown(ev) {
+      if (isTextEntryTarget(ev.target)) {
+        return;
+      }
+      var handled = false;
       if (LEFT_KEYS[ev.code] || LEFT_KEYS[ev.key]) {
         heldLeft = true;
-        ev.preventDefault();
+        handled = true;
       }
       if (RIGHT_KEYS[ev.code] || RIGHT_KEYS[ev.key]) {
         heldRight = true;
-        ev.preventDefault();
+        handled = true;
       }
       if (ev.code === "Space" || ev.key === " ") {
         commandApi.enqueue(queue, {
@@ -1400,6 +1481,8 @@
           source: "keyboard",
         });
         ev.preventDefault();
+        notifyGameplay();
+        return;
       }
       if (ev.code === "KeyE" || ev.key === "e" || ev.key === "E") {
         commandApi.enqueue(queue, {
@@ -1408,6 +1491,12 @@
           source: "keyboard",
         });
         ev.preventDefault();
+        notifyGameplay();
+        return;
+      }
+      if (handled) {
+        ev.preventDefault();
+        notifyGameplay();
       }
       recompute();
     }
@@ -1416,6 +1505,9 @@
      * @param {KeyboardEvent} ev
      */
     function onKeyUp(ev) {
+      if (isTextEntryTarget(ev.target)) {
+        return;
+      }
       if (LEFT_KEYS[ev.code] || LEFT_KEYS[ev.key]) {
         heldLeft = false;
       }
@@ -1452,6 +1544,7 @@
 
   var api = {
     attachKeyboard: attachKeyboard,
+    isTextEntryTarget: isTextEntryTarget,
   };
 
   if (typeof module !== "undefined" && module.exports) {
@@ -1459,6 +1552,493 @@
   }
   if (typeof globalThis !== "undefined") {
     globalThis.GauntletLoopInputKeyboard = api;
+  }
+})();
+/**
+ * Gamepad poll: remap table, steer axis, fire/special edges, disconnect zero steer.
+ */
+(function inputGamepadModule() {
+  "use strict";
+
+  var DEADZONE = 0.2;
+
+  /** @type {{ steerAxis: number, steerAltAxis: number, dpadLeft: number, dpadRight: number, fire: number, specialPrimary: number, specialAlt: number }} */
+  var REMAP = {
+    steerAxis: 0,
+    steerAltAxis: 2,
+    dpadLeft: 14,
+    dpadRight: 15,
+    fire: 0,
+    specialPrimary: 2,
+    specialAlt: 4,
+  };
+
+  /**
+   * @returns {{
+   *   slotIndex: number | null,
+   *   prevButtons: boolean[],
+   *   injectPad: Gamepad | null,
+   *   disconnectSteerActive: boolean
+   * }}
+   */
+  function createGamepadState() {
+    return {
+      slotIndex: null,
+      prevButtons: [],
+      injectPad: null,
+      disconnectSteerActive: false,
+    };
+  }
+
+  /**
+   * @param {number} value
+   * @returns {number}
+   */
+  function applyDeadzone(value) {
+    if (value > DEADZONE) {
+      return value;
+    }
+    if (value < -DEADZONE) {
+      return value;
+    }
+    return 0;
+  }
+
+  /**
+   * @param {Gamepad | null} pad
+   * @returns {number}
+   */
+  function readSteerAxis(pad) {
+    if (!pad) {
+      return 0;
+    }
+    var raw = 0;
+    if (pad.axes.length > REMAP.steerAxis) {
+      raw = pad.axes[REMAP.steerAxis];
+    }
+    if (Math.abs(raw) < DEADZONE && pad.axes.length > REMAP.steerAltAxis) {
+      raw = pad.axes[REMAP.steerAltAxis];
+    }
+    var steer = applyDeadzone(raw);
+    if (steer !== 0) {
+      return steer;
+    }
+    if (pad.buttons[REMAP.dpadLeft] && pad.buttons[REMAP.dpadLeft].pressed) {
+      return -1;
+    }
+    if (pad.buttons[REMAP.dpadRight] && pad.buttons[REMAP.dpadRight].pressed) {
+      return 1;
+    }
+    return 0;
+  }
+
+  /**
+   * @param {object} state
+   * @returns {Gamepad | null}
+   */
+  function activePad(state) {
+    if (state.injectPad) {
+      return state.injectPad;
+    }
+    if (state.slotIndex === null) {
+      return null;
+    }
+    var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    if (!pads || !pads[state.slotIndex]) {
+      return null;
+    }
+    return pads[state.slotIndex];
+  }
+
+  /**
+   * @param {{ steer: number, source: string | null }} control
+   * @param {() => string} getMode
+   * @param {{ filterSteer: function(number, string|null, string): number }} modeApi
+   * @param {{ enqueue: function(object, object): object }} commandApi
+   * @param {object} queue
+   * @param {ReturnType<typeof createGamepadState>} state
+   * @param {{ onConnected?: function(): void }} opts
+   */
+  function pollGamepad(control, getMode, modeApi, commandApi, queue, state, opts) {
+    opts = opts || {};
+    var pad = activePad(state);
+    var mode = getMode();
+    if (!pad) {
+      if (control.source === "gamepad") {
+        control.steer = 0;
+        control.source = null;
+      }
+      state.prevButtons = [];
+      return;
+    }
+
+    var steerRaw = readSteerAxis(pad);
+    var steer = modeApi.filterSteer(steerRaw, "gamepad", mode);
+    if (steerRaw !== 0 && steer !== 0) {
+      control.steer = steer;
+      control.source = "gamepad";
+    } else if (control.source === "gamepad") {
+      control.steer = 0;
+      control.source = null;
+    }
+
+    var buttons = pad.buttons;
+    var i;
+    for (i = 0; i < buttons.length; i++) {
+      var pressed = !!buttons[i].pressed;
+      var was = !!state.prevButtons[i];
+      if (pressed && !was) {
+        if (i === REMAP.fire) {
+          commandApi.enqueue(queue, {
+            type: "fire",
+            payload: { side: "center" },
+            source: "gamepad",
+          });
+        } else if (i === REMAP.specialPrimary || i === REMAP.specialAlt) {
+          commandApi.enqueue(queue, {
+            type: "special",
+            payload: {},
+            source: "gamepad",
+          });
+        }
+      }
+      state.prevButtons[i] = pressed;
+    }
+    while (state.prevButtons.length < buttons.length) {
+      state.prevButtons.push(false);
+    }
+  }
+
+  /**
+   * @param {ReturnType<typeof createGamepadState>} state
+   * @param {{ onConnected?: function(): void, onDisconnected?: function(): void }} opts
+   * @param {{ steer: number, source: string | null }} control
+   */
+  function attachGamepadListeners(state, control, opts) {
+    opts = opts || {};
+
+    /**
+     * @param {GamepadEvent} ev
+     */
+    function onConnect(ev) {
+      state.slotIndex = ev.gamepad.index;
+      state.disconnectSteerActive = false;
+      if (opts.onConnected) {
+        opts.onConnected();
+      }
+    }
+
+    /**
+     * @param {GamepadEvent} ev
+     */
+    function onDisconnect(ev) {
+      if (state.slotIndex === ev.gamepad.index) {
+        state.slotIndex = null;
+      }
+      state.injectPad = null;
+      control.steer = 0;
+      control.source = null;
+      state.prevButtons = [];
+      if (opts.onDisconnected) {
+        opts.onDisconnected();
+      }
+    }
+
+    window.addEventListener("gamepadconnected", onConnect);
+    window.addEventListener("gamepaddisconnected", onDisconnect);
+
+    return function detach() {
+      window.removeEventListener("gamepadconnected", onConnect);
+      window.removeEventListener("gamepaddisconnected", onDisconnect);
+    };
+  }
+
+  /**
+   * @param {ReturnType<typeof createGamepadState>} state
+   * @param {{ axes?: number[], buttons?: boolean[] }} spec
+   */
+  function injectTestGamepad(state, spec) {
+    var axes = spec.axes || [0, 0];
+    var buttons = spec.buttons || [];
+    var btns = [];
+    var i;
+    for (i = 0; i < 16; i++) {
+      btns.push({ pressed: !!buttons[i], value: buttons[i] ? 1 : 0 });
+    }
+    state.injectPad = {
+      axes: axes,
+      buttons: btns,
+      connected: true,
+      id: "test-pad",
+      index: 0,
+      mapping: "standard",
+      timestamp: performance.now(),
+    };
+    state.slotIndex = 0;
+  }
+
+  function clearInjectedGamepad(state) {
+    state.injectPad = null;
+    state.slotIndex = null;
+  }
+
+  /**
+   * @param {{ steer: number, source: string | null }} control
+   * @param {() => string} getMode
+   * @param {object} modeApi
+   * @param {object} commandApi
+   * @param {object} queue
+   * @param {{ onConnected?: function(): void }} [opts]
+   */
+  function attachGamepad(control, getMode, modeApi, commandApi, queue, opts) {
+    var state = createGamepadState();
+    var detach = attachGamepadListeners(state, control, opts);
+    return {
+      state: state,
+      poll: function () {
+        pollGamepad(control, getMode, modeApi, commandApi, queue, state, opts);
+      },
+      injectTestGamepad: function (spec) {
+        injectTestGamepad(state, spec);
+      },
+      clearInjectedGamepad: function () {
+        clearInjectedGamepad(state);
+        control.steer = 0;
+        control.source = null;
+      },
+      simulateDisconnect: function () {
+        clearInjectedGamepad(state);
+        control.steer = 0;
+        control.source = null;
+        state.prevButtons = [];
+        if (opts && opts.onDisconnected) {
+          opts.onDisconnected();
+        }
+      },
+      detach: detach,
+    };
+  }
+
+  var api = {
+    REMAP: REMAP,
+    attachGamepad: attachGamepad,
+    pollGamepad: pollGamepad,
+    createGamepadState: createGamepadState,
+    injectTestGamepad: injectTestGamepad,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopInputGamepad = api;
+  }
+})();
+/**
+ * Touch steer pad and fire/special targets. Hide on keyboard/pad, show on touch.
+ */
+(function inputTouchModule() {
+  "use strict";
+
+  /**
+   * @param {() => string} getMode
+   * @param {{ MODE_MOTION: string }} modeApi
+   * @param {{ steer: number, source: string | null }} control
+   * @param {{ filterSteer: function(number, string|null, string): number }} modeApiFull
+   * @param {{ enqueue: function(object, object): object }} commandApi
+   * @param {object} queue
+   */
+  function attachTouch(control, getMode, modeApi, modeApiFull, commandApi, queue) {
+    var root = document.createElement("div");
+    root.id = "touch-overlay";
+    root.setAttribute("aria-hidden", "true");
+
+    var steerPad = document.createElement("div");
+    steerPad.className = "touch-steer";
+    steerPad.setAttribute("role", "presentation");
+
+    var actions = document.createElement("div");
+    actions.className = "touch-actions";
+
+    var fireBtn = document.createElement("button");
+    fireBtn.type = "button";
+    fireBtn.className = "touch-fire";
+    fireBtn.textContent = "Fire";
+
+    var specialBtn = document.createElement("button");
+    specialBtn.type = "button";
+    specialBtn.className = "touch-special";
+    specialBtn.textContent = "Special";
+
+    actions.appendChild(fireBtn);
+    actions.appendChild(specialBtn);
+    root.appendChild(steerPad);
+    root.appendChild(actions);
+    document.body.appendChild(root);
+
+    var visible = true;
+    var steerPointerId = null;
+
+    function shouldShow() {
+      return getMode() !== modeApi.MODE_MOTION;
+    }
+
+    function syncDisplay() {
+      if (!shouldShow() || !visible) {
+        root.style.display = "none";
+        root.setAttribute("aria-hidden", "true");
+      } else {
+        root.style.display = "flex";
+        root.setAttribute("aria-hidden", "false");
+      }
+    }
+
+    function hide() {
+      visible = false;
+      steerPointerId = null;
+      if (control.source === "touch") {
+        control.steer = 0;
+        control.source = null;
+      }
+      syncDisplay();
+    }
+
+    function show() {
+      if (!shouldShow()) {
+        return;
+      }
+      visible = true;
+      syncDisplay();
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function onFirstTouch(ev) {
+      if (!visible && shouldShow()) {
+        show();
+      }
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function onSteerDown(ev) {
+      if (!visible || !shouldShow()) {
+        return;
+      }
+      steerPointerId = ev.pointerId;
+      steerPad.setPointerCapture(ev.pointerId);
+      updateSteerFromEvent(ev);
+      ev.preventDefault();
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function updateSteerFromEvent(ev) {
+      var rect = steerPad.getBoundingClientRect();
+      var mid = rect.left + rect.width * 0.5;
+      var t = (ev.clientX - mid) / (rect.width * 0.5);
+      if (t < -1) {
+        t = -1;
+      }
+      if (t > 1) {
+        t = 1;
+      }
+      var steer = modeApiFull.filterSteer(t, "touch", getMode());
+      control.steer = steer;
+      if (steer !== 0) {
+        control.source = "touch";
+      }
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function onSteerMove(ev) {
+      if (ev.pointerId !== steerPointerId) {
+        return;
+      }
+      updateSteerFromEvent(ev);
+      ev.preventDefault();
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function onSteerUp(ev) {
+      if (ev.pointerId !== steerPointerId) {
+        return;
+      }
+      steerPointerId = null;
+      if (control.source === "touch") {
+        control.steer = 0;
+        control.source = null;
+      }
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function onBodyPointer(ev) {
+      if (visible || !shouldShow()) {
+        return;
+      }
+      var t = ev.target;
+      if (t instanceof Element && t.closest("#typed-input-wrap")) {
+        return;
+      }
+      show();
+    }
+
+    document.addEventListener("pointerdown", onBodyPointer);
+
+    steerPad.addEventListener("pointerdown", onSteerDown);
+    steerPad.addEventListener("pointermove", onSteerMove);
+    steerPad.addEventListener("pointerup", onSteerUp);
+    steerPad.addEventListener("pointercancel", onSteerUp);
+
+    fireBtn.addEventListener("click", function () {
+      commandApi.enqueue(queue, {
+        type: "fire",
+        payload: { side: "center" },
+        source: "touch",
+      });
+    });
+    specialBtn.addEventListener("click", function () {
+      commandApi.enqueue(queue, {
+        type: "special",
+        payload: {},
+        source: "touch",
+      });
+    });
+
+    syncDisplay();
+
+    return {
+      hide: hide,
+      show: show,
+      isVisible: function () {
+        return visible && shouldShow() && root.style.display !== "none";
+      },
+      rootElement: root,
+      syncDisplay: syncDisplay,
+      destroy: function () {
+        root.remove();
+      },
+    };
+  }
+
+  var api = {
+    attachTouch: attachTouch,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopInputTouch = api;
   }
 })();
 /**
@@ -1608,6 +2188,8 @@
     var resize = globalThis.GauntletLoopResize;
     var inputKb = globalThis.GauntletLoopInputKeyboard;
     var inputTyped = globalThis.GauntletLoopInputTyped;
+    var inputGamepad = globalThis.GauntletLoopInputGamepad;
+    var inputTouch = globalThis.GauntletLoopInputTouch;
     var combatApi = globalThis.GauntletLoopCombat;
     var loop = globalThis.GauntletLoopLoop;
 
@@ -1620,6 +2202,8 @@
       !resize ||
       !inputKb ||
       !inputTyped ||
+      !inputGamepad ||
+      !inputTouch ||
       !combatApi ||
       !loop
     ) {
@@ -1664,11 +2248,43 @@
       }
     }
 
-    var kb = inputKb.attachKeyboard(control, getMode, mode, command, queue);
+    var touch = null;
+    touch = inputTouch.attachTouch(control, getMode, mode, mode, command, queue);
+
+    var pad = inputGamepad.attachGamepad(control, getMode, mode, command, queue, {
+      onConnected: function () {
+        if (touch) {
+          touch.hide();
+        }
+      },
+    });
+
+    var kb = inputKb.attachKeyboard(control, getMode, mode, command, queue, {
+      onGameplayKey: function () {
+        if (touch) {
+          touch.hide();
+        }
+      },
+    });
+
     var typed = inputTyped.attachTypedInput({
       parseIntent: parseIntent.parseIntent,
       onCommands: enqueueParsed,
     });
+
+    function runTick(dt) {
+      pad.poll();
+      var cmds = command.drainForTick(queue);
+      var i;
+      for (i = 0; i < cmds.length; i++) {
+        var allowed = mode.filterCommand(cmds[i], modeState.mode);
+        if (allowed) {
+          combatApi.handleCommand(combat, sim, allowed);
+        }
+      }
+      simApi.step(sim, dt, control.steer);
+      combatApi.step(combat, sim, dt);
+    }
 
     function handleResize() {
       resize.applyResize(canvas, viewport, ctx);
@@ -1682,18 +2298,12 @@
 
     loop.startGameLoop({
       onTick: function (dt) {
-        var cmds = command.drainForTick(queue);
-        var i;
-        for (i = 0; i < cmds.length; i++) {
-          var allowed = mode.filterCommand(cmds[i], modeState.mode);
-          if (allowed) {
-            combatApi.handleCommand(combat, sim, allowed);
-          }
-        }
-        simApi.step(sim, dt, control.steer);
-        combatApi.step(combat, sim, dt);
+        runTick(dt);
       },
       onFrame: function () {
+        if (touch) {
+          touch.syncDisplay();
+        }
         render.drawFrame(ctx, sim, viewport, combat);
       },
     });
@@ -1733,6 +2343,14 @@
           }),
         };
       },
+      isTouchVisible: function () {
+        return touch ? touch.isVisible() : false;
+      },
+      showTouchOverlay: function () {
+        if (touch) {
+          touch.show();
+        }
+      },
       placeTestEnemies: function (specs) {
         combatApi.placeTestEnemies(combat, sim, specs);
       },
@@ -1760,16 +2378,7 @@
         while (left > 0) {
           var dt = left < slice ? left : slice;
           left -= dt;
-          var cmds = command.drainForTick(queue);
-          var i;
-          for (i = 0; i < cmds.length; i++) {
-            var allowed = mode.filterCommand(cmds[i], modeState.mode);
-            if (allowed) {
-              combatApi.handleCommand(combat, sim, allowed);
-            }
-          }
-          simApi.step(sim, dt, control.steer);
-          combatApi.step(combat, sim, dt);
+          runTick(dt);
         }
       },
       pressFire: function () {
@@ -1777,6 +2386,16 @@
       },
       pressSpecial: function () {
         kb.pressSpecial();
+      },
+      injectGamepadSteer: function (axisX) {
+        pad.injectTestGamepad({ axes: [axisX, 0], buttons: [] });
+        if (touch) {
+          touch.hide();
+        }
+        pad.poll();
+      },
+      simulateGamepadDisconnect: function () {
+        pad.simulateDisconnect();
       },
     };
   }

@@ -13,6 +13,8 @@ PACK_MODULES=(
   "$ROOT/src/render.js"
   "$ROOT/src/resize.js"
   "$ROOT/src/input-keyboard.js"
+  "$ROOT/src/input-gamepad.js"
+  "$ROOT/src/input-touch.js"
   "$ROOT/src/input-typed.js"
   "$ROOT/src/loop.js"
   "$ROOT/src/main.js"
@@ -95,6 +97,52 @@ cat >"$OUT" <<EOF
       background: #21262d;
       color: #e6edf3;
       cursor: pointer;
+    }
+    #touch-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 4;
+    }
+    #touch-overlay .touch-steer,
+    #touch-overlay .touch-actions,
+    #touch-overlay button {
+      pointer-events: auto;
+    }
+    #touch-overlay .touch-steer {
+      width: 42vmin;
+      max-width: 280px;
+      margin: 12vh 0 10vh 0.75rem;
+      border: 3px solid #e6edf3;
+      border-radius: 18px;
+      background: rgba(33, 38, 45, 0.75);
+      touch-action: none;
+    }
+    #touch-overlay .touch-actions {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      margin: 12vh 0.75rem 10vh 0;
+    }
+    #touch-overlay button {
+      min-width: 120px;
+      min-height: 64px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border-radius: 14px;
+      border: 3px solid #e6edf3;
+      background: rgba(33, 38, 45, 0.9);
+      color: #e6edf3;
+    }
+    #touch-overlay .touch-fire {
+      background: rgba(185, 28, 28, 0.85);
+    }
+    #touch-overlay .touch-special {
+      background: rgba(37, 99, 235, 0.85);
     }
     #probe-root h1 {
       font-size: 1.25rem;
