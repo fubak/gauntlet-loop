@@ -22,11 +22,11 @@ npm run dev:worker   # http://127.0.0.1:8787
 
 Optional: `npm run predev:worker` copies map fixtures into `dist/fixtures/` for desktop query flags.
 
-## Deploy note
+## Deploy and preview note
 
-Production deploy is **intentionally not part of day-to-day dev**. Do not ship until an explicit go. When ready, publish the Worker and static assets (packed `dist/`) to your Cloudflare account with `wrangler deploy` from a maintainer machine. This repo does not auto-deploy.
+This repo pins **Wrangler ^4.135.0** (project-local `npm install`). Wrangler 4 `wrangler preview` publishes a **Workers Preview** URL (public HTTPS, not production). Wrangler 3 `preview` was only a local request tester.
 
-The **Tesla parked playtest** path is a preview URL (for example via PlayThing) over public HTTPS on the same origin as `/v1/*`. That preview is separate from claiming the in-car browser works until Phase 0 and a real parked session on the car are recorded.
+Production deploy is **intentionally not part of day-to-day dev**. Do not run `wrangler deploy` until an explicit go. Maintainers publish previews with `npm run pack` then `npx wrangler preview` after bindings in `wrangler.toml` (including the `[previews]` block) are satisfied. PlayThing uses that preview URL for the parked Tesla playtest. That is separate from claiming the in-car browser works until Phase 0 and a real parked session on the car are recorded.
 
 ## Desktop probes
 

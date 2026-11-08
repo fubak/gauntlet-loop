@@ -1,6 +1,7 @@
 name = "gauntlet-loop"
 main = "worker/index.js"
 compatibility_date = "2024-11-01"
+account_id = "4654797f062b81d036f9f5142ead6bcf"
 
 [assets]
 directory = "./dist"
@@ -24,5 +25,16 @@ new_classes = ["RoomObject"]
 
 [[kv_namespaces]]
 binding = "WRITER_INDEX"
-id = "00000000000000000000000000000000"
-preview_id = "00000000000000000000000000000000"
+
+[previews]
+
+[[previews.durable_objects.bindings]]
+name = "SESSION"
+class_name = "SessionObject"
+
+[[previews.durable_objects.bindings]]
+name = "ROOM"
+class_name = "RoomObject"
+
+[[previews.kv_namespaces]]
+binding = "WRITER_INDEX"
