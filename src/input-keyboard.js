@@ -1,5 +1,5 @@
 /**
- * WASD and arrow keys write ControlState.steer. No command flood.
+ * WASD, arrows, Space fire, E special.
  */
 (function inputKeyboardModule() {
   "use strict";
@@ -12,9 +12,12 @@
   /**
    * @param {ControlState} control
    * @param {() => string} getMode
-   * @param {{ filterSteer: function(number, string|null, string): number }} modeApi
+   * @param {{ filterSteer: function(number, string|null, string): number, filterCommand: function(object, string): object|null }} modeApi
+   * @param {{ enqueue: function(queue: object, partial: object): object, createQueue?: never }} commandApi
+   * @param {{ drain?: never }} queue
+   * @param {object} queue
    */
-  function attachKeyboard(control, getMode, modeApi) {
+  function attachKeyboard(control, getMode, modeApi, commandApi, queue) {
     var heldLeft = false;
     var heldRight = false;
 
@@ -47,6 +50,22 @@
         heldRight = true;
         ev.preventDefault();
       }
+      if (ev.code === "Space" || ev.key === " ") {
+        commandApi.enqueue(queue, {
+          type: "fire",
+          payload: { side: "center" },
+          source: "keyboard",
+        });
+        ev.preventDefault();
+      }
+      if (ev.code === "KeyE" || ev.key === "e" || ev.key === "E") {
+        commandApi.enqueue(queue, {
+          type: "special",
+          payload: {},
+          source: "keyboard",
+        });
+        ev.preventDefault();
+      }
       recompute();
     }
 
@@ -66,9 +85,25 @@
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
-    return function detach() {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
+    return {
+      detach: function () {
+        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keyup", onKeyUp);
+      },
+      pressFire: function () {
+        commandApi.enqueue(queue, {
+          type: "fire",
+          payload: { side: "center" },
+          source: "keyboard",
+        });
+      },
+      pressSpecial: function () {
+        commandApi.enqueue(queue, {
+          type: "special",
+          payload: {},
+          source: "keyboard",
+        });
+      },
     };
   }
 

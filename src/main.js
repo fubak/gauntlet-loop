@@ -1,5 +1,5 @@
 /**
- * Thin wiring for Phase 2 highway stub. No game rules here.
+ * Thin wiring: inputs, queue, mode filter, combat, sim, render.
  */
 (function mainModule() {
   "use strict";
@@ -14,13 +14,27 @@
   function bootGame() {
     var command = globalThis.GauntletLoopCommand;
     var mode = globalThis.GauntletLoopMode;
+    var parseIntent = globalThis.GauntletLoopParseIntent;
     var simApi = globalThis.GauntletLoopSim;
     var render = globalThis.GauntletLoopRender;
     var resize = globalThis.GauntletLoopResize;
     var inputKb = globalThis.GauntletLoopInputKeyboard;
+    var inputTyped = globalThis.GauntletLoopInputTyped;
+    var combatApi = globalThis.GauntletLoopCombat;
     var loop = globalThis.GauntletLoopLoop;
 
-    if (!command || !mode || !simApi || !render || !resize || !inputKb || !loop) {
+    if (
+      !command ||
+      !mode ||
+      !parseIntent ||
+      !simApi ||
+      !render ||
+      !resize ||
+      !inputKb ||
+      !inputTyped ||
+      !combatApi ||
+      !loop
+    ) {
       return;
     }
 
@@ -48,13 +62,25 @@
     var control = { steer: 0, source: null };
 
     var sim = simApi.createSim();
+    var combat = combatApi.createCombat();
     var viewport = resize.createViewport(sim.worldWidth, sim.worldHeight);
 
     function getMode() {
       return modeState.mode;
     }
 
-    inputKb.attachKeyboard(control, getMode, mode);
+    function enqueueParsed(cmds) {
+      var i;
+      for (i = 0; i < cmds.length; i++) {
+        command.enqueue(queue, cmds[i]);
+      }
+    }
+
+    var kb = inputKb.attachKeyboard(control, getMode, mode, command, queue);
+    var typed = inputTyped.attachTypedInput({
+      parseIntent: parseIntent.parseIntent,
+      onCommands: enqueueParsed,
+    });
 
     function handleResize() {
       resize.applyResize(canvas, viewport, ctx);
@@ -71,12 +97,16 @@
         var cmds = command.drainForTick(queue);
         var i;
         for (i = 0; i < cmds.length; i++) {
-          mode.filterCommand(cmds[i], modeState.mode);
+          var allowed = mode.filterCommand(cmds[i], modeState.mode);
+          if (allowed) {
+            combatApi.handleCommand(combat, sim, allowed);
+          }
         }
         simApi.step(sim, dt, control.steer);
+        combatApi.step(combat, sim, dt);
       },
       onFrame: function () {
-        render.drawFrame(ctx, sim, viewport);
+        render.drawFrame(ctx, sim, viewport, combat);
       },
     });
 
@@ -94,6 +124,71 @@
       },
       getControl: function () {
         return { steer: control.steer, source: control.source };
+      },
+      getCombat: function () {
+        return {
+          lockEnemyId: combat.lockEnemyId,
+          lockColor: combat.lockColor,
+          lastHitEnemyId: combat.lastHitEnemyId,
+          score: combat.score,
+          weaponCooldown: combat.weaponCooldown,
+          specialCooldown: combat.specialCooldown,
+          enemyCount: combat.enemies.length,
+          enemies: combat.enemies.map(function (e) {
+            return {
+              id: e.id,
+              x: e.x,
+              y: e.y,
+              color: e.color,
+              alive: e.alive,
+            };
+          }),
+        };
+      },
+      placeTestEnemies: function (specs) {
+        combatApi.placeTestEnemies(combat, sim, specs);
+      },
+      submitTyped: function (text) {
+        return typed.submitText(text);
+      },
+      applyFirstTypedCommand: function (text) {
+        var cmds = parseIntent.parseIntent(text);
+        if (cmds.length === 0) {
+          return null;
+        }
+        command.enqueue(queue, cmds[0]);
+        var drained = command.drainForTick(queue);
+        if (drained.length) {
+          var allowed = mode.filterCommand(drained[0], modeState.mode);
+          if (allowed) {
+            combatApi.handleCommand(combat, sim, allowed);
+          }
+        }
+        return combat.lockEnemyId;
+      },
+      tickSeconds: function (seconds) {
+        var slice = 1 / 60;
+        var left = seconds;
+        while (left > 0) {
+          var dt = left < slice ? left : slice;
+          left -= dt;
+          var cmds = command.drainForTick(queue);
+          var i;
+          for (i = 0; i < cmds.length; i++) {
+            var allowed = mode.filterCommand(cmds[i], modeState.mode);
+            if (allowed) {
+              combatApi.handleCommand(combat, sim, allowed);
+            }
+          }
+          simApi.step(sim, dt, control.steer);
+          combatApi.step(combat, sim, dt);
+        }
+      },
+      pressFire: function () {
+        kb.pressFire();
+      },
+      pressSpecial: function () {
+        kb.pressSpecial();
       },
     };
   }

@@ -5,7 +5,7 @@
   "use strict";
 
   var WORLD_WIDTH = 100;
-  var PLAYER_Y = 18;
+  var PLAYER_Y = 82;
   var PLAYER_X_MIN = 10;
   var PLAYER_X_MAX = 90;
   var LATERAL_SPEED = 42;

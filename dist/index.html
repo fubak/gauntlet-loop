@@ -30,6 +30,38 @@
       display: none;
       padding: 1rem 1.25rem 2rem;
       line-height: 1.4;
+      overflow: auto;
+      height: 100%;
+    }
+    #typed-input-wrap {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.6rem 0.75rem;
+      background: rgba(13, 17, 23, 0.92);
+      border-top: 1px solid #30363d;
+      z-index: 5;
+    }
+    #typed-command {
+      flex: 1;
+      font-size: 1rem;
+      padding: 0.5rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: #e6edf3;
+    }
+    #typed-input-wrap button {
+      font-size: 0.95rem;
+      padding: 0.5rem 0.85rem;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #e6edf3;
+      cursor: pointer;
     }
     #probe-root h1 {
       font-size: 1.25rem;
@@ -483,7 +515,7 @@
   "use strict";
 
   var WORLD_WIDTH = 100;
-  var PLAYER_Y = 18;
+  var PLAYER_Y = 82;
   var PLAYER_X_MIN = 10;
   var PLAYER_X_MAX = 90;
   var LATERAL_SPEED = 42;
@@ -552,17 +584,464 @@
   }
 })();
 /**
- * Draw highway and player from sim state. No input ownership.
+ * Combat: lock, fire thirds, special, loot, collect-all. No parsing or drawing.
+ */
+(function combatModule() {
+  "use strict";
+
+  var WEAPON_COOLDOWN = 0.15;
+  var SPECIAL_COOLDOWN = 4.0;
+  var MAGNET_DURATION = 2.5;
+  var ENEMY_SPEED = 28;
+  var SPAWN_INTERVAL = 2.4;
+  var SPECIAL_RADIUS = 22;
+  var LOOT_MAGNET_SPEED = 55;
+
+  /** @typedef {"red" | "blue" | "green"} EnemyColor */
+  /** @typedef {"chevron" | "stripe" | "diamond"} MarkKind */
+
+  /**
+   * @typedef {{
+   *   id: number,
+   *   x: number,
+   *   y: number,
+   *   color: EnemyColor,
+   *   mark: MarkKind,
+   *   alive: boolean
+   * }} Enemy
+
+   * @typedef {{
+   *   id: number,
+   *   x: number,
+   *   y: number,
+   *   vx: number,
+   *   vy: number
+   * }} Loot
+
+   * @typedef {{
+   *   enemies: Enemy[],
+   *   loot: Loot[],
+   *   lockEnemyId: number | null,
+   *   lockColor: EnemyColor | null,
+   *   weaponCooldown: number,
+   *   specialCooldown: number,
+   *   magnetUntil: number,
+   *   spawnTimer: number,
+   *   nextEnemyId: number,
+   *   nextLootId: number,
+   *   score: number,
+   *   lastHitEnemyId: number | null,
+   *   specialFlashUntil: number,
+   *   autoSpawn: boolean
+   * }} CombatState
+   */
+
+  var COLOR_MARK = {
+    red: "chevron",
+    blue: "stripe",
+    green: "diamond",
+  };
+
+  /**
+   * @returns {CombatState}
+   */
+  function createCombat() {
+    return {
+      enemies: [],
+      loot: [],
+      lockEnemyId: null,
+      lockColor: null,
+      weaponCooldown: 0,
+      specialCooldown: 0,
+      magnetUntil: 0,
+      spawnTimer: 0,
+      nextEnemyId: 1,
+      nextLootId: 1,
+      score: 0,
+      lastHitEnemyId: null,
+      specialFlashUntil: 0,
+      autoSpawn: true,
+    };
+  }
+
+  /**
+   * @param {Enemy} enemy
+   * @param {{ playerX: number, playerY: number }} sim
+   * @returns {number}
+   */
+  function distanceAhead(enemy, sim) {
+    return sim.playerY - enemy.y;
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   * @returns {Enemy | null}
+   */
+  function getLockedEnemy(combat, sim) {
+    if (combat.lockEnemyId === null) {
+      return null;
+    }
+    var i;
+    for (i = 0; i < combat.enemies.length; i++) {
+      var e = combat.enemies[i];
+      if (e.id === combat.lockEnemyId && e.alive) {
+        return e;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number }} sim
+   * @param {EnemyColor | null} color
+   * @returns {Enemy | null}
+   */
+  function nearestEnemy(combat, sim, color) {
+    var best = null;
+    var bestDist = Infinity;
+    var i;
+    for (i = 0; i < combat.enemies.length; i++) {
+      var e = combat.enemies[i];
+      if (!e.alive) {
+        continue;
+      }
+      if (color && e.color !== color) {
+        continue;
+      }
+      var d = distanceAhead(e, sim);
+      if (d >= 0 && d < bestDist) {
+        bestDist = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} worldWidth
+   * @returns {"left" | "center" | "right"}
+   */
+  function laneThird(x, worldWidth) {
+    var t = x / worldWidth;
+    if (t < 0.34) {
+      return "left";
+    }
+    if (t > 0.66) {
+      return "right";
+    }
+    return "center";
+  }
+
+  /**
+   * @param {Enemy} enemy
+   * @param {"left" | "right" | "center"} side
+   * @param {number} worldWidth
+   * @returns {boolean}
+   */
+  function enemyInThird(enemy, side, worldWidth) {
+    return laneThird(enemy.x, worldWidth) === side;
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   * @param {{ color?: EnemyColor, side?: string }} payload
+   * @returns {Enemy | null}
+   */
+  function pickFireTarget(combat, sim, payload) {
+    var side = payload.side || "center";
+    if (side !== "left" && side !== "right" && side !== "center") {
+      side = "center";
+    }
+    var color =
+      payload.color !== undefined && payload.color !== null ? payload.color : null;
+    var locked = getLockedEnemy(combat, sim);
+    if (!color && locked && enemyInThird(locked, side, sim.worldWidth)) {
+      return locked;
+    }
+    if (color && locked && locked.color === color && enemyInThird(locked, side, sim.worldWidth)) {
+      return locked;
+    }
+    var best = null;
+    var bestDist = Infinity;
+    var i;
+    for (i = 0; i < combat.enemies.length; i++) {
+      var e = combat.enemies[i];
+      if (!e.alive) {
+        continue;
+      }
+      if (color && e.color !== color) {
+        continue;
+      }
+      if (!enemyInThird(e, side, sim.worldWidth)) {
+        continue;
+      }
+      var d = distanceAhead(e, sim);
+      if (d >= 0 && d < bestDist) {
+        bestDist = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {Enemy} enemy
+   */
+  function killEnemy(combat, enemy) {
+    enemy.alive = false;
+    combat.score += 1;
+    if (combat.lockEnemyId === enemy.id) {
+      combat.lockEnemyId = null;
+    }
+    combat.loot.push({
+      id: combat.nextLootId++,
+      x: enemy.x,
+      y: enemy.y,
+      vx: 0,
+      vy: 0,
+    });
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   * @param {{ type: string, payload?: object }} cmd
+   */
+  function handleCommand(combat, sim, cmd) {
+    var payload = cmd.payload || {};
+    if (cmd.type === "target-color" && payload.color) {
+      combat.lockColor = payload.color;
+      var colored = nearestEnemy(combat, sim, payload.color);
+      if (colored) {
+        combat.lockEnemyId = colored.id;
+      }
+      return;
+    }
+    if (cmd.type === "focus-nearest") {
+      var nearest = nearestEnemy(combat, sim, null);
+      if (nearest) {
+        combat.lockEnemyId = nearest.id;
+        combat.lockColor = nearest.color;
+      }
+      return;
+    }
+    if (cmd.type === "collect-all") {
+      combat.magnetUntil = performance.now() / 1000 + MAGNET_DURATION;
+      return;
+    }
+    if (cmd.type === "fire") {
+      tryFire(combat, sim, payload);
+      return;
+    }
+    if (cmd.type === "special") {
+      trySpecial(combat, sim);
+    }
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   * @param {object} payload
+   */
+  function tryFire(combat, sim, payload) {
+    if (combat.weaponCooldown > 0) {
+      return;
+    }
+    var target = pickFireTarget(combat, sim, payload);
+    if (!target) {
+      return;
+    }
+    combat.weaponCooldown = WEAPON_COOLDOWN;
+    combat.lockEnemyId = target.id;
+    combat.lastHitEnemyId = target.id;
+    killEnemy(combat, target);
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number }} sim
+   */
+  function trySpecial(combat, sim) {
+    if (combat.specialCooldown > 0) {
+      return;
+    }
+    combat.specialCooldown = SPECIAL_COOLDOWN;
+    combat.specialFlashUntil = performance.now() / 1000 + 0.25;
+    var i;
+    for (i = 0; i < combat.enemies.length; i++) {
+      var e = combat.enemies[i];
+      if (!e.alive) {
+        continue;
+      }
+      var dx = e.x - sim.playerX;
+      var dy = e.y - sim.playerY;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= SPECIAL_RADIUS) {
+        combat.lastHitEnemyId = e.id;
+        killEnemy(combat, e);
+      }
+    }
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {number} dt
+   */
+  function tickCooldowns(combat, dt) {
+    if (combat.weaponCooldown > 0) {
+      combat.weaponCooldown -= dt;
+      if (combat.weaponCooldown < 0) {
+        combat.weaponCooldown = 0;
+      }
+    }
+    if (combat.specialCooldown > 0) {
+      combat.specialCooldown -= dt;
+      if (combat.specialCooldown < 0) {
+        combat.specialCooldown = 0;
+      }
+    }
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   * @param {number} dt
+   */
+  function step(combat, sim, dt) {
+    tickCooldowns(combat, dt);
+    var now = performance.now() / 1000;
+    var i;
+    for (i = 0; i < combat.enemies.length; i++) {
+      var e = combat.enemies[i];
+      if (!e.alive) {
+        continue;
+      }
+      e.y += ENEMY_SPEED * dt;
+    }
+    for (i = combat.enemies.length - 1; i >= 0; i--) {
+      if (!combat.enemies[i].alive) {
+        combat.enemies.splice(i, 1);
+      }
+    }
+    if (combat.autoSpawn) {
+      combat.spawnTimer -= dt;
+      if (combat.spawnTimer <= 0) {
+        combat.spawnTimer = SPAWN_INTERVAL;
+        spawnEnemy(combat, sim);
+      }
+    }
+    var magnet = now < combat.magnetUntil;
+    for (i = 0; i < combat.loot.length; i++) {
+      var L = combat.loot[i];
+      if (magnet) {
+        var lx = sim.playerX - L.x;
+        var ly = sim.playerY - L.y;
+        var len = Math.sqrt(lx * lx + ly * ly) || 1;
+        L.vx = (lx / len) * LOOT_MAGNET_SPEED;
+        L.vy = (ly / len) * LOOT_MAGNET_SPEED;
+      }
+      L.x += L.vx * dt;
+      L.y += L.vy * dt;
+      var distLoot =
+        Math.sqrt(
+          (L.x - sim.playerX) * (L.x - sim.playerX) +
+            (L.y - sim.playerY) * (L.y - sim.playerY)
+        ) < 3;
+      if (distLoot) {
+        combat.loot.splice(i, 1);
+        i--;
+        combat.score += 1;
+      }
+    }
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   */
+  function spawnEnemy(combat, sim) {
+    var colors = ["red", "blue", "green"];
+    var color = colors[Math.floor(Math.random() * colors.length)];
+    var mark = COLOR_MARK[color];
+    combat.enemies.push({
+      id: combat.nextEnemyId++,
+      x: 26 + Math.random() * (sim.worldWidth - 52),
+      y: 8 + Math.random() * 18,
+      color: color,
+      mark: mark,
+      alive: true,
+    });
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number }} sim
+   * @param {{ id?: number, x: number, y: number, color: EnemyColor }[]} specs
+   */
+  function placeTestEnemies(combat, sim, specs) {
+    combat.autoSpawn = false;
+    combat.enemies = [];
+    combat.lockColor = null;
+    combat.lockEnemyId = null;
+    combat.weaponCooldown = 0;
+    var i;
+    for (i = 0; i < specs.length; i++) {
+      var s = specs[i];
+      var color = s.color;
+      var mark = COLOR_MARK[color];
+      combat.enemies.push({
+        id: s.id !== undefined ? s.id : combat.nextEnemyId++,
+        x: s.x,
+        y: s.y,
+        color: color,
+        mark: mark,
+        alive: true,
+      });
+    }
+  }
+
+  var api = {
+    WEAPON_COOLDOWN: WEAPON_COOLDOWN,
+    SPECIAL_COOLDOWN: SPECIAL_COOLDOWN,
+    createCombat: createCombat,
+    handleCommand: handleCommand,
+    step: step,
+    placeTestEnemies: placeTestEnemies,
+    nearestEnemy: nearestEnemy,
+    getLockedEnemy: getLockedEnemy,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopCombat = api;
+  }
+})();
+/**
+ * Draw highway, enemies, loot, lock marker, and player.
  */
 (function renderModule() {
   "use strict";
+
+  var COLOR_FILL = {
+    red: "#ef4444",
+    blue: "#3b82f6",
+    green: "#22c55e",
+  };
 
   /**
    * @param {CanvasRenderingContext2D} ctx
    * @param {import("./sim.js").SimState} sim
    * @param {import("./resize.js").Viewport} viewport
+   * @param {import("./combat.js").CombatState} combat
    */
-  function drawFrame(ctx, sim, viewport) {
+  function drawFrame(ctx, sim, viewport, combat) {
     var w = viewport.cssWidth;
     var h = viewport.cssHeight;
     var s = viewport.worldScale;
@@ -591,6 +1070,32 @@
     ctx.fillRect(22, 0, ww - 44, wh);
 
     drawRoadMarks(ctx, sim, ww, wh);
+
+    var now = performance.now() / 1000;
+    if (combat && combat.specialFlashUntil > now) {
+      ctx.strokeStyle = "rgba(94, 234, 212, 0.45)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(sim.playerX, sim.playerY, 12, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (combat) {
+      var i;
+      for (i = 0; i < combat.loot.length; i++) {
+        drawLoot(ctx, combat.loot[i]);
+      }
+      for (i = 0; i < combat.enemies.length; i++) {
+        var enemy = combat.enemies[i];
+        if (!enemy.alive) {
+          continue;
+        }
+        drawEnemy(ctx, enemy);
+        if (combat.lockEnemyId === enemy.id) {
+          drawLockMarker(ctx, enemy);
+        }
+      }
+    }
 
     drawPlayer(ctx, sim);
 
@@ -624,6 +1129,90 @@
 
   /**
    * @param {CanvasRenderingContext2D} ctx
+   * @param {{ x: number, y: number, color: string, mark: string }} enemy
+   */
+  function drawEnemy(ctx, enemy) {
+    var x = enemy.x;
+    var y = enemy.y;
+    var r = 2.4;
+    ctx.fillStyle = COLOR_FILL[enemy.color] || "#888";
+    ctx.beginPath();
+    ctx.rect(x - r, y - r, r * 2, r * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 0.25;
+    ctx.stroke();
+    drawMark(ctx, enemy);
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ x: number, y: number, mark: string }} enemy
+   */
+  function drawMark(ctx, enemy) {
+    var x = enemy.x;
+    var y = enemy.y;
+    ctx.strokeStyle = "#f8fafc";
+    ctx.fillStyle = "#f8fafc";
+    ctx.lineWidth = 0.3;
+    if (enemy.mark === "chevron") {
+      ctx.beginPath();
+      ctx.moveTo(x, y - 1.1);
+      ctx.lineTo(x - 0.9, y + 0.2);
+      ctx.lineTo(x + 0.9, y + 0.2);
+      ctx.closePath();
+      ctx.stroke();
+    } else if (enemy.mark === "stripe") {
+      ctx.beginPath();
+      ctx.moveTo(x - 0.9, y - 0.2);
+      ctx.lineTo(x + 0.9, y + 0.2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - 0.9, y + 0.4);
+      ctx.lineTo(x + 0.9, y + 0.8);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(x, y - 0.9);
+      ctx.lineTo(x + 0.9, y);
+      ctx.lineTo(x, y + 0.9);
+      ctx.lineTo(x - 0.9, y);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ x: number, y: number }} enemy
+   */
+  function drawLockMarker(ctx, enemy) {
+    var x = enemy.x;
+    var y = enemy.y;
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = 0.35;
+    ctx.beginPath();
+    ctx.arc(x, y, 3.6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y - 4.8);
+    ctx.lineTo(x, y - 6.2);
+    ctx.stroke();
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ x: number, y: number }} loot
+   */
+  function drawLoot(ctx, loot) {
+    ctx.fillStyle = "#fde047";
+    ctx.beginPath();
+    ctx.arc(loot.x, loot.y, 0.9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
    * @param {import("./sim.js").SimState} sim
    */
   function drawPlayer(ctx, sim) {
@@ -632,9 +1221,9 @@
     var size = 3.2;
     ctx.fillStyle = "#5eead4";
     ctx.beginPath();
-    ctx.moveTo(x, y + size);
-    ctx.lineTo(x - size * 0.65, y - size * 0.4);
-    ctx.lineTo(x + size * 0.65, y - size * 0.4);
+    ctx.moveTo(x, y - size);
+    ctx.lineTo(x - size * 0.65, y + size * 0.4);
+    ctx.lineTo(x + size * 0.65, y + size * 0.4);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = "#0f766e";
@@ -753,7 +1342,7 @@
   }
 })();
 /**
- * WASD and arrow keys write ControlState.steer. No command flood.
+ * WASD, arrows, Space fire, E special.
  */
 (function inputKeyboardModule() {
   "use strict";
@@ -766,9 +1355,12 @@
   /**
    * @param {ControlState} control
    * @param {() => string} getMode
-   * @param {{ filterSteer: function(number, string|null, string): number }} modeApi
+   * @param {{ filterSteer: function(number, string|null, string): number, filterCommand: function(object, string): object|null }} modeApi
+   * @param {{ enqueue: function(queue: object, partial: object): object, createQueue?: never }} commandApi
+   * @param {{ drain?: never }} queue
+   * @param {object} queue
    */
-  function attachKeyboard(control, getMode, modeApi) {
+  function attachKeyboard(control, getMode, modeApi, commandApi, queue) {
     var heldLeft = false;
     var heldRight = false;
 
@@ -801,6 +1393,22 @@
         heldRight = true;
         ev.preventDefault();
       }
+      if (ev.code === "Space" || ev.key === " ") {
+        commandApi.enqueue(queue, {
+          type: "fire",
+          payload: { side: "center" },
+          source: "keyboard",
+        });
+        ev.preventDefault();
+      }
+      if (ev.code === "KeyE" || ev.key === "e" || ev.key === "E") {
+        commandApi.enqueue(queue, {
+          type: "special",
+          payload: {},
+          source: "keyboard",
+        });
+        ev.preventDefault();
+      }
       recompute();
     }
 
@@ -820,9 +1428,25 @@
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
-    return function detach() {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
+    return {
+      detach: function () {
+        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keyup", onKeyUp);
+      },
+      pressFire: function () {
+        commandApi.enqueue(queue, {
+          type: "fire",
+          payload: { side: "center" },
+          source: "keyboard",
+        });
+      },
+      pressSpecial: function () {
+        commandApi.enqueue(queue, {
+          type: "special",
+          payload: {},
+          source: "keyboard",
+        });
+      },
     };
   }
 
@@ -835,6 +1459,82 @@
   }
   if (typeof globalThis !== "undefined") {
     globalThis.GauntletLoopInputKeyboard = api;
+  }
+})();
+/**
+ * Visible text field that calls parseIntent and enqueues commands.
+ */
+(function inputTypedModule() {
+  "use strict";
+
+  /**
+   * @param {{
+   *   onCommands: (cmds: object[]) => void,
+   *   parseIntent: (text: string) => object[]
+   * }} opts
+   */
+  function attachTypedInput(opts) {
+    var wrap = document.createElement("div");
+    wrap.id = "typed-input-wrap";
+    wrap.setAttribute("aria-label", "Typed combat commands");
+
+    var input = document.createElement("input");
+    input.type = "text";
+    input.id = "typed-command";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.placeholder = "shoot red, fire left, use special...";
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Send";
+
+    function submit() {
+      var text = input.value;
+      var cmds = opts.parseIntent(text);
+      if (cmds.length === 0) {
+        return;
+      }
+      opts.onCommands(cmds);
+      input.value = "";
+      input.blur();
+    }
+
+    input.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        submit();
+      }
+    });
+    btn.addEventListener("click", submit);
+
+    wrap.appendChild(input);
+    wrap.appendChild(btn);
+    document.body.appendChild(wrap);
+
+    return {
+      submitText: function (text) {
+        var cmds = opts.parseIntent(text);
+        if (cmds.length) {
+          opts.onCommands(cmds);
+        }
+        return cmds;
+      },
+      destroy: function () {
+        wrap.remove();
+      },
+    };
+  }
+
+  var api = {
+    attachTypedInput: attachTypedInput,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopInputTyped = api;
   }
 })();
 /**
@@ -887,7 +1587,7 @@
   }
 })();
 /**
- * Thin wiring for Phase 2 highway stub. No game rules here.
+ * Thin wiring: inputs, queue, mode filter, combat, sim, render.
  */
 (function mainModule() {
   "use strict";
@@ -902,13 +1602,27 @@
   function bootGame() {
     var command = globalThis.GauntletLoopCommand;
     var mode = globalThis.GauntletLoopMode;
+    var parseIntent = globalThis.GauntletLoopParseIntent;
     var simApi = globalThis.GauntletLoopSim;
     var render = globalThis.GauntletLoopRender;
     var resize = globalThis.GauntletLoopResize;
     var inputKb = globalThis.GauntletLoopInputKeyboard;
+    var inputTyped = globalThis.GauntletLoopInputTyped;
+    var combatApi = globalThis.GauntletLoopCombat;
     var loop = globalThis.GauntletLoopLoop;
 
-    if (!command || !mode || !simApi || !render || !resize || !inputKb || !loop) {
+    if (
+      !command ||
+      !mode ||
+      !parseIntent ||
+      !simApi ||
+      !render ||
+      !resize ||
+      !inputKb ||
+      !inputTyped ||
+      !combatApi ||
+      !loop
+    ) {
       return;
     }
 
@@ -936,13 +1650,25 @@
     var control = { steer: 0, source: null };
 
     var sim = simApi.createSim();
+    var combat = combatApi.createCombat();
     var viewport = resize.createViewport(sim.worldWidth, sim.worldHeight);
 
     function getMode() {
       return modeState.mode;
     }
 
-    inputKb.attachKeyboard(control, getMode, mode);
+    function enqueueParsed(cmds) {
+      var i;
+      for (i = 0; i < cmds.length; i++) {
+        command.enqueue(queue, cmds[i]);
+      }
+    }
+
+    var kb = inputKb.attachKeyboard(control, getMode, mode, command, queue);
+    var typed = inputTyped.attachTypedInput({
+      parseIntent: parseIntent.parseIntent,
+      onCommands: enqueueParsed,
+    });
 
     function handleResize() {
       resize.applyResize(canvas, viewport, ctx);
@@ -959,12 +1685,16 @@
         var cmds = command.drainForTick(queue);
         var i;
         for (i = 0; i < cmds.length; i++) {
-          mode.filterCommand(cmds[i], modeState.mode);
+          var allowed = mode.filterCommand(cmds[i], modeState.mode);
+          if (allowed) {
+            combatApi.handleCommand(combat, sim, allowed);
+          }
         }
         simApi.step(sim, dt, control.steer);
+        combatApi.step(combat, sim, dt);
       },
       onFrame: function () {
-        render.drawFrame(ctx, sim, viewport);
+        render.drawFrame(ctx, sim, viewport, combat);
       },
     });
 
@@ -982,6 +1712,71 @@
       },
       getControl: function () {
         return { steer: control.steer, source: control.source };
+      },
+      getCombat: function () {
+        return {
+          lockEnemyId: combat.lockEnemyId,
+          lockColor: combat.lockColor,
+          lastHitEnemyId: combat.lastHitEnemyId,
+          score: combat.score,
+          weaponCooldown: combat.weaponCooldown,
+          specialCooldown: combat.specialCooldown,
+          enemyCount: combat.enemies.length,
+          enemies: combat.enemies.map(function (e) {
+            return {
+              id: e.id,
+              x: e.x,
+              y: e.y,
+              color: e.color,
+              alive: e.alive,
+            };
+          }),
+        };
+      },
+      placeTestEnemies: function (specs) {
+        combatApi.placeTestEnemies(combat, sim, specs);
+      },
+      submitTyped: function (text) {
+        return typed.submitText(text);
+      },
+      applyFirstTypedCommand: function (text) {
+        var cmds = parseIntent.parseIntent(text);
+        if (cmds.length === 0) {
+          return null;
+        }
+        command.enqueue(queue, cmds[0]);
+        var drained = command.drainForTick(queue);
+        if (drained.length) {
+          var allowed = mode.filterCommand(drained[0], modeState.mode);
+          if (allowed) {
+            combatApi.handleCommand(combat, sim, allowed);
+          }
+        }
+        return combat.lockEnemyId;
+      },
+      tickSeconds: function (seconds) {
+        var slice = 1 / 60;
+        var left = seconds;
+        while (left > 0) {
+          var dt = left < slice ? left : slice;
+          left -= dt;
+          var cmds = command.drainForTick(queue);
+          var i;
+          for (i = 0; i < cmds.length; i++) {
+            var allowed = mode.filterCommand(cmds[i], modeState.mode);
+            if (allowed) {
+              combatApi.handleCommand(combat, sim, allowed);
+            }
+          }
+          simApi.step(sim, dt, control.steer);
+          combatApi.step(combat, sim, dt);
+        }
+      },
+      pressFire: function () {
+        kb.pressFire();
+      },
+      pressSpecial: function () {
+        kb.pressSpecial();
       },
     };
   }
@@ -1236,6 +2031,10 @@
     var canvas = document.getElementById("game");
     if (canvas) {
       canvas.style.display = "none";
+    }
+    var root = document.getElementById("probe-root");
+    if (root) {
+      root.style.display = "block";
     }
     var rows = syncRows();
     renderTable(rows);

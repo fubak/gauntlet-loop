@@ -236,6 +236,10 @@
     if (canvas) {
       canvas.style.display = "none";
     }
+    var root = document.getElementById("probe-root");
+    if (root) {
+      root.style.display = "block";
+    }
     var rows = syncRows();
     renderTable(rows);
     runFetchHealth(rows);

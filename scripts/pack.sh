@@ -9,9 +9,11 @@ PACK_MODULES=(
   "$ROOT/src/mode.js"
   "$ROOT/src/parse-intent.js"
   "$ROOT/src/sim.js"
+  "$ROOT/src/combat.js"
   "$ROOT/src/render.js"
   "$ROOT/src/resize.js"
   "$ROOT/src/input-keyboard.js"
+  "$ROOT/src/input-typed.js"
   "$ROOT/src/loop.js"
   "$ROOT/src/main.js"
   "$ROOT/src/probe.js"
@@ -61,6 +63,38 @@ cat >"$OUT" <<EOF
       display: none;
       padding: 1rem 1.25rem 2rem;
       line-height: 1.4;
+      overflow: auto;
+      height: 100%;
+    }
+    #typed-input-wrap {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.6rem 0.75rem;
+      background: rgba(13, 17, 23, 0.92);
+      border-top: 1px solid #30363d;
+      z-index: 5;
+    }
+    #typed-command {
+      flex: 1;
+      font-size: 1rem;
+      padding: 0.5rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: #e6edf3;
+    }
+    #typed-input-wrap button {
+      font-size: 0.95rem;
+      padding: 0.5rem 0.85rem;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #e6edf3;
+      cursor: pointer;
     }
     #probe-root h1 {
       font-size: 1.25rem;
