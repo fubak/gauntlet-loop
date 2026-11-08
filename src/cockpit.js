@@ -67,7 +67,6 @@
         return;
       }
       ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
       var pad = 14;
       ctx.strokeStyle = "rgba(94, 234, 212, 0.55)";
       ctx.lineWidth = 2;
