@@ -1,8 +1,8 @@
 {
-  "latitude": 38.8951,
-  "longitude": -77.0364,
-  "location_name": "Washington, District of Columbia, United States",
-  "road": "Ellipse Road Northwest",
-  "timestamp": "2026-11-10T02:23:03Z",
+  "latitude": null,
+  "longitude": null,
+  "location_name": null,
+  "road": null,
+  "timestamp": "2026-11-10T10:18:00Z",
   "speed": null
 }
