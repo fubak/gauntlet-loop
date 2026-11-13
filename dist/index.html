@@ -1,0 +1,5116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gauntlet Loop</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+    }
+  html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    #game {
+      display: none;
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+    #probe-root {
+      display: none;
+      padding: 1rem 1.25rem 2rem;
+      line-height: 1.4;
+      overflow: auto;
+      height: 100%;
+    }
+    #typed-input-wrap {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.6rem 0.75rem;
+      background: rgba(13, 17, 23, 0.92);
+      border-top: 1px solid #30363d;
+      z-index: 5;
+    }
+    #typed-command {
+      flex: 1;
+      font-size: 1rem;
+      padding: 0.5rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: #e6edf3;
+    }
+    #typed-input-wrap button {
+      font-size: 0.95rem;
+      padding: 0.5rem 0.85rem;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #e6edf3;
+      cursor: pointer;
+    }
+    #touch-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 4;
+    }
+    #touch-overlay .touch-steer,
+    #touch-overlay .touch-actions,
+    #touch-overlay button {
+      pointer-events: auto;
+    }
+    #touch-overlay .touch-steer {
+      width: 42vmin;
+      max-width: 280px;
+      margin: 12vh 0 10vh 0.75rem;
+      border: 3px solid #e6edf3;
+      border-radius: 18px;
+      background: rgba(33, 38, 45, 0.75);
+      touch-action: none;
+    }
+    #touch-overlay .touch-actions {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      margin: 12vh 0.75rem 10vh 0;
+    }
+    #touch-overlay button {
+      min-width: 120px;
+      min-height: 64px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border-radius: 14px;
+      border: 3px solid #e6edf3;
+      background: rgba(33, 38, 45, 0.9);
+      color: #e6edf3;
+    }
+    #touch-overlay .touch-fire {
+      background: rgba(185, 28, 28, 0.85);
+    }
+    #touch-overlay .touch-special {
+      background: rgba(37, 99, 235, 0.85);
+    }
+    #boot-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1.5rem;
+      background: rgba(10, 14, 20, 0.94);
+      text-align: center;
+    }
+    #boot-overlay h2 {
+      margin: 0;
+      font-size: 1.35rem;
+    }
+    .boot-warn {
+      max-width: 28rem;
+      margin: 0;
+      color: #fbbf24;
+      font-size: 0.95rem;
+    }
+    .boot-detail {
+      max-width: 28rem;
+      margin: 0;
+      color: #c9d1d9;
+      font-size: 0.9rem;
+    }
+    .boot-location {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      color: #e6edf3;
+    }
+    .boot-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      justify-content: center;
+    }
+    .boot-actions button {
+      min-width: 140px;
+      min-height: 48px;
+      font-size: 1rem;
+      padding: 0.55rem 1rem;
+      border-radius: 10px;
+      border: 2px solid #e6edf3;
+      background: #21262d;
+      color: #e6edf3;
+      cursor: pointer;
+    }
+    #boot-parked {
+      background: #0f766e;
+    }
+    #mode-switch {
+      position: fixed;
+      top: 0.5rem;
+      right: 0.5rem;
+      z-index: 6;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.5rem;
+      background: rgba(13, 17, 23, 0.9);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      font-size: 0.8rem;
+    }
+    #mode-switch button {
+      padding: 0.25rem 0.45rem;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #e6edf3;
+      cursor: pointer;
+    }
+    #mode-switch button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    #cockpit-toggle {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.4rem;
+    }
+    #voice-controls {
+      position: fixed;
+      top: 0.5rem;
+      left: 0.5rem;
+      z-index: 6;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.35rem;
+      max-width: 16rem;
+    }
+    #voice-hud {
+      font-size: 0.8rem;
+      color: #c9d1d9;
+      background: rgba(13, 17, 23, 0.9);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 0.35rem 0.5rem;
+    }
+    #voice-listen {
+      font-size: 0.85rem;
+      padding: 0.35rem 0.6rem;
+      border-radius: 8px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #e6edf3;
+      cursor: pointer;
+    }
+    #room-error {
+      position: fixed;
+      right: 0.5rem;
+      bottom: 5.5rem;
+      z-index: 7;
+      display: none;
+      max-width: 14rem;
+      padding: 0.35rem 0.55rem;
+      font-size: 0.78rem;
+      color: #e2e8f0;
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid #475569;
+      border-radius: 8px;
+    }
+    #session-error {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      top: 3.25rem;
+      z-index: 7;
+      display: none;
+      max-width: 22rem;
+      padding: 0.4rem 0.65rem;
+      font-size: 0.82rem;
+      color: #fecaca;
+      background: rgba(127, 29, 29, 0.92);
+      border: 1px solid #991b1b;
+      border-radius: 8px;
+    }
+    #probe-root h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0 0 0.5rem;
+    }
+    .probe-note {
+      margin: 0 0 1rem;
+      color: #8b949e;
+      font-size: 0.9rem;
+    }
+    .probe-table {
+      width: 100%;
+      max-width: 42rem;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    .probe-table th,
+    .probe-table td {
+      border: 1px solid #30363d;
+      padding: 0.5rem 0.65rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    .probe-table th {
+      background: #161b22;
+    }
+    .probe-table td.pass {
+      color: #3fb950;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+    }
+    .probe-table td.fail {
+      color: #f85149;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+    }
+    .probe-table td.detail {
+      color: #c9d1d9;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Highway playfield"></canvas>
+  <div id="probe-root" aria-live="polite"></div>
+  <script>
+/**
+ * Command queue: ids, enqueue, drain-for-tick. No parsing or rendering.
+ *
+ * @typedef {{ id?: number, type: string, payload?: object, source: string, t?: number }} Command
+ */
+
+(function commandModule(factory) {
+  "use strict";
+
+  /**
+   * @returns {{ nextId: number, items: Command[] }}
+   */
+  function createQueue() {
+    return { nextId: 1, items: [] };
+  }
+
+  /**
+   * @param {{ nextId: number, items: Command[] }} queue
+   * @param {Omit<Command, "id"> & { id?: number }} partial
+   * @returns {Command}
+   */
+  function enqueue(queue, partial) {
+    var cmd = {
+      id: typeof partial.id === "number" ? partial.id : queue.nextId++,
+      type: partial.type,
+      payload: partial.payload ? Object.assign({}, partial.payload) : {},
+      source: partial.source,
+      t: typeof partial.t === "number" ? partial.t : now(),
+    };
+    if (typeof partial.id !== "number") {
+      queue.nextId = Math.max(queue.nextId, cmd.id + 1);
+    }
+    queue.items.push(cmd);
+    return cmd;
+  }
+
+  /**
+   * @returns {number}
+   */
+  function now() {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+      return performance.now();
+    }
+    return Date.now();
+  }
+
+  /**
+   * @param {{ nextId: number, items: Command[] }} queue
+   * @returns {Command[]}
+   */
+  function drainForTick(queue) {
+    var batch = queue.items.slice();
+    queue.items.length = 0;
+    return batch;
+  }
+
+  /**
+   * @param {{ nextId: number, items: Command[] }} queue
+   * @returns {number}
+   */
+  function queueLength(queue) {
+    return queue.items.length;
+  }
+
+  var api = {
+    createQueue: createQueue,
+    enqueue: enqueue,
+    drainForTick: drainForTick,
+    queueLength: queueLength,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopCommand = api;
+  }
+})(undefined);
+/**
+ * SessionMode state machine and input filter. No combat math.
+ */
+(function modeModule(factory) {
+  "use strict";
+
+  /** @typedef {"boot" | "parked" | "motion"} SessionMode */
+  /** @typedef {"keyboard" | "mouse" | "gamepad" | "touch" | "voice" | "typed"} CommandSource */
+  /** @typedef {{ type: string, payload?: object, source: CommandSource }} CommandLike */
+
+  /** @type {SessionMode} */
+  var MODE_BOOT = "boot";
+  /** @type {SessionMode} */
+  var MODE_PARKED = "parked";
+  /** @type {SessionMode} */
+  var MODE_MOTION = "motion";
+
+  /** @type {CommandSource[]} */
+  var MOTION_COMMAND_SOURCES = ["voice", "typed"];
+
+  /** @type {CommandSource[]} */
+  var PARKED_STEER_SOURCES = ["keyboard", "mouse", "gamepad", "touch"];
+
+  /**
+   * @returns {{ mode: SessionMode }}
+   */
+  function createModeState() {
+    return { mode: MODE_BOOT };
+  }
+
+  /**
+   * @param {{ mode: SessionMode }} state
+   * @param {SessionMode} next
+   */
+  function setSessionMode(state, next) {
+    if (next !== MODE_BOOT && next !== MODE_PARKED && next !== MODE_MOTION) {
+      return;
+    }
+    state.mode = next;
+  }
+
+  /**
+   * @param {SessionMode} mode
+   * @param {CommandSource} source
+   * @returns {boolean}
+   */
+  function isCommandSourceAllowed(mode, source) {
+    if (mode === MODE_PARKED) {
+      return true;
+    }
+    if (mode === MODE_MOTION) {
+      return MOTION_COMMAND_SOURCES.indexOf(source) !== -1;
+    }
+    return false;
+  }
+
+  /**
+   * @param {SessionMode} mode
+   * @param {CommandSource | null} source
+   * @returns {boolean}
+   */
+  function isSteerSourceAllowed(mode, source) {
+    if (mode !== MODE_PARKED) {
+      return false;
+    }
+    if (source === null) {
+      return false;
+    }
+    return PARKED_STEER_SOURCES.indexOf(source) !== -1;
+  }
+
+  /**
+   * @param {CommandLike | null} command
+   * @param {SessionMode} mode
+   * @returns {CommandLike | null}
+   */
+  function filterCommand(command, mode) {
+    if (!command) {
+      return null;
+    }
+    if (!isCommandSourceAllowed(mode, command.source)) {
+      return null;
+    }
+    return command;
+  }
+
+  /**
+   * @param {number} steer
+   * @param {CommandSource | null} source
+   * @param {SessionMode} mode
+   * @returns {number}
+   */
+  function filterSteer(steer, source, mode) {
+    if (!isSteerSourceAllowed(mode, source)) {
+      return 0;
+    }
+    if (steer < -1) {
+      return -1;
+    }
+    if (steer > 1) {
+      return 1;
+    }
+    return steer;
+  }
+
+  /**
+   * @param {SessionMode} mode
+   * @returns {{ steer: number, source: CommandSource | null }}
+   */
+  function defaultControlState(mode) {
+    return {
+      steer: mode === MODE_MOTION ? 0 : 0,
+      source: null,
+    };
+  }
+
+  var api = {
+    MODE_BOOT: MODE_BOOT,
+    MODE_PARKED: MODE_PARKED,
+    MODE_MOTION: MODE_MOTION,
+    createModeState: createModeState,
+    setSessionMode: setSessionMode,
+    isCommandSourceAllowed: isCommandSourceAllowed,
+    isSteerSourceAllowed: isSteerSourceAllowed,
+    filterCommand: filterCommand,
+    filterSteer: filterSteer,
+    defaultControlState: defaultControlState,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopMode = api;
+  }
+})(undefined);
+/**
+ * Pure parseIntent(text) from the plan phrase table. No DOM, no speech.
+ */
+(function parseIntentModule(factory) {
+  "use strict";
+
+  /** @typedef {"red" | "blue" | "green"} EnemyColor */
+  /** @typedef {{ color?: EnemyColor, side?: "left" | "right" | "center" }} CommandPayload */
+  /** @typedef {{ type: string, payload?: CommandPayload, source: string }} Command */
+
+  /** @type {EnemyColor[]} */
+  var COLORS = ["red", "blue", "green"];
+
+  /** @type {Record<string, boolean>} */
+  var STOPWORDS = {
+    a: true,
+    an: true,
+    and: true,
+    at: true,
+    go: true,
+    ahead: true,
+    my: true,
+    now: true,
+    one: true,
+    please: true,
+    the: true,
+    to: true,
+  };
+
+  /**
+   * @param {string} type
+   * @param {CommandPayload} [payload]
+   * @returns {Command}
+   */
+  function makeCommand(type, payload) {
+    return {
+      type: type,
+      payload: payload ? Object.assign({}, payload) : {},
+      source: "typed",
+    };
+  }
+
+  /**
+   * @param {string} raw
+   * @returns {string}
+   */
+  function normalize(raw) {
+    return String(raw).toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  /**
+   * @param {string} text
+   * @returns {EnemyColor | null}
+   */
+  function findColor(text) {
+    for (var i = 0; i < COLORS.length; i++) {
+      var color = COLORS[i];
+      var re = new RegExp("\\b" + color + "\\b");
+      if (re.test(text)) {
+        return color;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @param {string} text
+   * @returns {"left" | "right" | null}
+   */
+  function findSide(text) {
+    if (/\bleft\b/.test(text)) {
+      return "left";
+    }
+    if (/\bright\b/.test(text)) {
+      return "right";
+    }
+    return null;
+  }
+
+  /**
+   * @param {string} text
+   * @returns {boolean}
+   */
+  function hasFireVerb(text) {
+    return /\b(fire|shoot)\b/.test(text);
+  }
+
+  /**
+   * @param {string} norm
+   * @returns {boolean}
+   */
+  function isBareFirePhrase(norm) {
+    if (norm === "fire" || norm === "shoot") {
+      return true;
+    }
+    var tokens = norm.split(/\s+/);
+    var i;
+    for (i = 0; i < tokens.length; i++) {
+      var tok = tokens[i];
+      if (tok === "fire" || tok === "shoot") {
+        continue;
+      }
+      if (STOPWORDS[tok]) {
+        continue;
+      }
+      return false;
+    }
+    return hasFireVerb(norm);
+  }
+
+  /**
+   * @param {string} norm
+   * @returns {boolean}
+   */
+  function isSideOnlyPhrase(norm) {
+    return (
+      /\b(fire|shoot)\s+left\b/.test(norm) ||
+      /\b(fire|shoot)\s+right\b/.test(norm) ||
+      /\bleft\s+(fire|shoot)\b/.test(norm) ||
+      /\bright\s+(fire|shoot)\b/.test(norm)
+    );
+  }
+
+  /**
+   * @param {string} text
+   * @returns {Command[]}
+   */
+  function parseIntent(text) {
+    var norm = normalize(text);
+    if (!norm) {
+      return [];
+    }
+
+    if (/\bfocus\s+nearest\b/.test(norm)) {
+      return [makeCommand("focus-nearest")];
+    }
+    if (/\buse\s+special\b/.test(norm)) {
+      return [makeCommand("special")];
+    }
+    if (/\bcollect\s+all\b/.test(norm)) {
+      return [makeCommand("collect-all")];
+    }
+
+    if (!hasFireVerb(norm)) {
+      return [];
+    }
+
+    var color = findColor(norm);
+    var side = findSide(norm);
+
+    if (color && side) {
+      return [makeCommand("fire", { color: color, side: side })];
+    }
+
+    if (color) {
+      return [
+        makeCommand("target-color", { color: color }),
+        makeCommand("fire", { color: color }),
+      ];
+    }
+
+    if (isSideOnlyPhrase(norm) && side) {
+      return [makeCommand("fire", { side: side })];
+    }
+
+    if (isBareFirePhrase(norm)) {
+      return [makeCommand("fire", { side: "center" })];
+    }
+
+    return [];
+  }
+
+  var api = {
+    parseIntent: parseIntent,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopParseIntent = api;
+  }
+})(undefined);
+/**
+ * Highway world state and step logic. No drawing or text parsing.
+ */
+(function simModule() {
+  "use strict";
+
+  var WORLD_WIDTH = 100;
+  var PLAYER_Y = 82;
+  var PLAYER_X_MIN = 10;
+  var PLAYER_X_MAX = 90;
+  var LATERAL_SPEED = 42;
+  var SCROLL_SPEED = 55;
+
+  /**
+   * @typedef {{
+   *   playerX: number,
+   *   playerY: number,
+   *   roadScroll: number,
+   *   worldWidth: number,
+   *   worldHeight: number
+   * }} SimState
+   */
+
+  /**
+   * @returns {SimState}
+   */
+  function createSim() {
+    return {
+      playerX: WORLD_WIDTH * 0.5,
+      playerY: PLAYER_Y,
+      roadScroll: 0,
+      worldWidth: WORLD_WIDTH,
+      worldHeight: 100,
+    };
+  }
+
+  /**
+   * @param {SimState} sim
+   * @param {number} dt seconds
+   * @param {number} steer -1..1
+   */
+  function step(sim, dt, steer) {
+    var clamped = steer;
+    if (clamped < -1) {
+      clamped = -1;
+    }
+    if (clamped > 1) {
+      clamped = 1;
+    }
+    sim.playerX += clamped * LATERAL_SPEED * dt;
+    if (sim.playerX < PLAYER_X_MIN) {
+      sim.playerX = PLAYER_X_MIN;
+    }
+    if (sim.playerX > PLAYER_X_MAX) {
+      sim.playerX = PLAYER_X_MAX;
+    }
+    sim.roadScroll += SCROLL_SPEED * dt;
+    if (sim.roadScroll > 1000) {
+      sim.roadScroll = sim.roadScroll % 1000;
+    }
+  }
+
+  var api = {
+    createSim: createSim,
+    step: step,
+    PLAYER_Y: PLAYER_Y,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopSim = api;
+  }
+})();
+/**
+ * Combat: lock, fire thirds, special, loot, collect-all. No parsing or drawing.
+ */
+(function combatModule() {
+  "use strict";
+
+  var WEAPON_COOLDOWN = 0.15;
+  var SPECIAL_COOLDOWN = 4.0;
+  var MAGNET_DURATION = 2.5;
+  var ENEMY_SPEED = 28;
+  var SPAWN_INTERVAL = 2.4;
+  var SPECIAL_RADIUS = 22;
+  var LOOT_MAGNET_SPEED = 55;
+
+  /** @typedef {"red" | "blue" | "green"} EnemyColor */
+  /** @typedef {"chevron" | "stripe" | "diamond"} MarkKind */
+
+  /**
+   * @typedef {{
+   *   id: number,
+   *   x: number,
+   *   y: number,
+   *   color: EnemyColor,
+   *   mark: MarkKind,
+   *   alive: boolean
+   * }} Enemy
+
+   * @typedef {{
+   *   id: number,
+   *   x: number,
+   *   y: number,
+   *   vx: number,
+   *   vy: number
+   * }} Loot
+
+   * @typedef {{
+   *   enemies: Enemy[],
+   *   loot: Loot[],
+   *   lockEnemyId: number | null,
+   *   lockColor: EnemyColor | null,
+   *   weaponCooldown: number,
+   *   specialCooldown: number,
+   *   magnetUntil: number,
+   *   spawnTimer: number,
+   *   nextEnemyId: number,
+   *   nextLootId: number,
+   *   score: number,
+   *   lastHitEnemyId: number | null,
+   *   specialFlashUntil: number,
+   *   fireFlashUntil: number,
+   *   autoSpawn: boolean
+   * }} CombatState
+   */
+
+  var COLOR_MARK = {
+    red: "chevron",
+    blue: "stripe",
+    green: "diamond",
+  };
+
+  /**
+   * @returns {CombatState}
+   */
+  function createCombat() {
+    return {
+      enemies: [],
+      loot: [],
+      lockEnemyId: null,
+      lockColor: null,
+      weaponCooldown: 0,
+      specialCooldown: 0,
+      magnetUntil: 0,
+      spawnTimer: 0,
+      nextEnemyId: 1,
+      nextLootId: 1,
+      score: 0,
+      lastHitEnemyId: null,
+      specialFlashUntil: 0,
+      fireFlashUntil: 0,
+      autoSpawn: true,
+    };
+  }
+
+  /**
+   * @param {Enemy} enemy
+   * @param {{ playerX: number, playerY: number }} sim
+   * @returns {number}
+   */
+  function distanceAhead(enemy, sim) {
+    return sim.playerY - enemy.y;
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   * @returns {Enemy | null}
+   */
+  function getLockedEnemy(combat, sim) {
+    if (combat.lockEnemyId === null) {
+      return null;
+    }
+    var i;
+    for (i = 0; i < combat.enemies.length; i++) {
+      var e = combat.enemies[i];
+      if (e.id === combat.lockEnemyId && e.alive) {
+        return e;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number }} sim
+   * @param {EnemyColor | null} color
+   * @returns {Enemy | null}
+   */
+  function nearestEnemy(combat, sim, color) {
+    var best = null;
+    var bestDist = Infinity;
+    var i;
+    for (i = 0; i < combat.enemies.length; i++) {
+      var e = combat.enemies[i];
+      if (!e.alive) {
+        continue;
+      }
+      if (color && e.color !== color) {
+        continue;
+      }
+      var d = distanceAhead(e, sim);
+      if (d >= 0 && d < bestDist) {
+        bestDist = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} worldWidth
+   * @returns {"left" | "center" | "right"}
+   */
+  function laneThird(x, worldWidth) {
+    var t = x / worldWidth;
+    if (t < 0.34) {
+      return "left";
+    }
+    if (t > 0.66) {
+      return "right";
+    }
+    return "center";
+  }
+
+  /**
+   * @param {Enemy} enemy
+   * @param {"left" | "right" | "center"} side
+   * @param {number} worldWidth
+   * @returns {boolean}
+   */
+  function enemyInThird(enemy, side, worldWidth) {
+    return laneThird(enemy.x, worldWidth) === side;
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   * @param {{ color?: EnemyColor, side?: string }} payload
+   * @returns {Enemy | null}
+   */
+  function pickFireTarget(combat, sim, payload) {
+    var side = payload.side;
+    var useThird = side === "left" || side === "right";
+    var color =
+      payload.color !== undefined && payload.color !== null ? payload.color : null;
+    var locked = getLockedEnemy(combat, sim);
+
+    function inCone(enemy) {
+      if (!useThird) {
+        return true;
+      }
+      return enemyInThird(enemy, side, sim.worldWidth);
+    }
+
+    if (!color && locked && inCone(locked)) {
+      return locked;
+    }
+    if (color && locked && locked.color === color && inCone(locked)) {
+      return locked;
+    }
+    var best = null;
+    var bestDist = Infinity;
+    var i;
+    for (i = 0; i < combat.enemies.length; i++) {
+      var e = combat.enemies[i];
+      if (!e.alive) {
+        continue;
+      }
+      if (color && e.color !== color) {
+        continue;
+      }
+      if (!inCone(e)) {
+        continue;
+      }
+      var d = distanceAhead(e, sim);
+      if (d >= 0 && d < bestDist) {
+        bestDist = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {Enemy} enemy
+   */
+  function killEnemy(combat, enemy) {
+    enemy.alive = false;
+    combat.score += 1;
+    if (combat.lockEnemyId === enemy.id) {
+      combat.lockEnemyId = null;
+    }
+    combat.loot.push({
+      id: combat.nextLootId++,
+      x: enemy.x,
+      y: enemy.y,
+      vx: 0,
+      vy: 0,
+    });
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   * @param {{ type: string, payload?: object }} cmd
+   */
+  function handleCommand(combat, sim, cmd) {
+    var payload = cmd.payload || {};
+    if (cmd.type === "target-color" && payload.color) {
+      combat.lockColor = payload.color;
+      var colored = nearestEnemy(combat, sim, payload.color);
+      if (colored) {
+        combat.lockEnemyId = colored.id;
+      }
+      return;
+    }
+    if (cmd.type === "focus-nearest") {
+      var nearest = nearestEnemy(combat, sim, null);
+      if (nearest) {
+        combat.lockEnemyId = nearest.id;
+        combat.lockColor = nearest.color;
+      }
+      return;
+    }
+    if (cmd.type === "collect-all") {
+      combat.magnetUntil = performance.now() / 1000 + MAGNET_DURATION;
+      return;
+    }
+    if (cmd.type === "fire") {
+      tryFire(combat, sim, payload);
+      return;
+    }
+    if (cmd.type === "special") {
+      trySpecial(combat, sim);
+    }
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   * @param {object} payload
+   */
+  function tryFire(combat, sim, payload) {
+    if (combat.weaponCooldown > 0) {
+      return;
+    }
+    var target = pickFireTarget(combat, sim, payload);
+    if (!target) {
+      return;
+    }
+    combat.weaponCooldown = WEAPON_COOLDOWN;
+    combat.fireFlashUntil = performance.now() / 1000 + 0.15;
+    combat.lockEnemyId = target.id;
+    combat.lastHitEnemyId = target.id;
+    killEnemy(combat, target);
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number }} sim
+   */
+  function trySpecial(combat, sim) {
+    if (combat.specialCooldown > 0) {
+      return;
+    }
+    combat.specialCooldown = SPECIAL_COOLDOWN;
+    combat.specialFlashUntil = performance.now() / 1000 + 0.25;
+    var i;
+    for (i = 0; i < combat.enemies.length; i++) {
+      var e = combat.enemies[i];
+      if (!e.alive) {
+        continue;
+      }
+      var dx = e.x - sim.playerX;
+      var dy = e.y - sim.playerY;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= SPECIAL_RADIUS) {
+        combat.lastHitEnemyId = e.id;
+        killEnemy(combat, e);
+      }
+    }
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {number} dt
+   */
+  function tickCooldowns(combat, dt) {
+    if (combat.weaponCooldown > 0) {
+      combat.weaponCooldown -= dt;
+      if (combat.weaponCooldown < 0) {
+        combat.weaponCooldown = 0;
+      }
+    }
+    if (combat.specialCooldown > 0) {
+      combat.specialCooldown -= dt;
+      if (combat.specialCooldown < 0) {
+        combat.specialCooldown = 0;
+      }
+    }
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   * @param {number} dt
+   */
+  function step(combat, sim, dt) {
+    tickCooldowns(combat, dt);
+    var now = performance.now() / 1000;
+    var i;
+    for (i = 0; i < combat.enemies.length; i++) {
+      var e = combat.enemies[i];
+      if (!e.alive) {
+        continue;
+      }
+      e.y += ENEMY_SPEED * dt;
+    }
+    for (i = combat.enemies.length - 1; i >= 0; i--) {
+      if (!combat.enemies[i].alive) {
+        combat.enemies.splice(i, 1);
+      }
+    }
+    if (combat.autoSpawn) {
+      combat.spawnTimer -= dt;
+      if (combat.spawnTimer <= 0) {
+        combat.spawnTimer = SPAWN_INTERVAL;
+        spawnEnemy(combat, sim);
+      }
+    }
+    var magnet = now < combat.magnetUntil;
+    for (i = 0; i < combat.loot.length; i++) {
+      var L = combat.loot[i];
+      if (magnet) {
+        var lx = sim.playerX - L.x;
+        var ly = sim.playerY - L.y;
+        var len = Math.sqrt(lx * lx + ly * ly) || 1;
+        L.vx = (lx / len) * LOOT_MAGNET_SPEED;
+        L.vy = (ly / len) * LOOT_MAGNET_SPEED;
+      }
+      L.x += L.vx * dt;
+      L.y += L.vy * dt;
+      var distLoot =
+        Math.sqrt(
+          (L.x - sim.playerX) * (L.x - sim.playerX) +
+            (L.y - sim.playerY) * (L.y - sim.playerY)
+        ) < 3;
+      if (distLoot) {
+        combat.loot.splice(i, 1);
+        i--;
+        combat.score += 1;
+      }
+    }
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number, worldWidth: number }} sim
+   */
+  function spawnEnemy(combat, sim) {
+    var colors = ["red", "blue", "green"];
+    var color = colors[Math.floor(Math.random() * colors.length)];
+    var mark = COLOR_MARK[color];
+    combat.enemies.push({
+      id: combat.nextEnemyId++,
+      x: 26 + Math.random() * (sim.worldWidth - 52),
+      y: 8 + Math.random() * 18,
+      color: color,
+      mark: mark,
+      alive: true,
+    });
+  }
+
+  /**
+   * @param {CombatState} combat
+   * @param {{ playerX: number, playerY: number }} sim
+   * @param {{ id?: number, x: number, y: number, color: EnemyColor }[]} specs
+   */
+  function placeTestEnemies(combat, sim, specs) {
+    combat.autoSpawn = false;
+    combat.enemies = [];
+    combat.lockColor = null;
+    combat.lockEnemyId = null;
+    combat.weaponCooldown = 0;
+    var i;
+    for (i = 0; i < specs.length; i++) {
+      var s = specs[i];
+      var color = s.color;
+      var mark = COLOR_MARK[color];
+      combat.enemies.push({
+        id: s.id !== undefined ? s.id : combat.nextEnemyId++,
+        x: s.x,
+        y: s.y,
+        color: color,
+        mark: mark,
+        alive: true,
+      });
+    }
+  }
+
+  var api = {
+    WEAPON_COOLDOWN: WEAPON_COOLDOWN,
+    SPECIAL_COOLDOWN: SPECIAL_COOLDOWN,
+    createCombat: createCombat,
+    handleCommand: handleCommand,
+    step: step,
+    placeTestEnemies: placeTestEnemies,
+    nearestEnemy: nearestEnemy,
+    getLockedEnemy: getLockedEnemy,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopCombat = api;
+  }
+})();
+/**
+ * Draw highway, enemies, loot, lock marker, and player.
+ */
+(function renderModule() {
+  "use strict";
+
+  var COLOR_FILL = {
+    red: "#ef4444",
+    blue: "#3b82f6",
+    green: "#22c55e",
+  };
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {import("./sim.js").SimState} sim
+   * @param {import("./resize.js").Viewport} viewport
+   * @param {import("./combat.js").CombatState} combat
+   * @param {{ flavor?: { shoulder: string, road: string, sky: string, accent: string }, locationFix?: object, mapApi?: { drawOwnerMap: Function } }} [opts]
+   */
+  function drawFrame(ctx, sim, viewport, combat, opts) {
+    opts = opts || {};
+    var flavor = opts.flavor;
+    var sky = flavor && flavor.sky ? flavor.sky : "#0a0e14";
+    var shoulder = flavor && flavor.shoulder ? flavor.shoulder : "#1e242d";
+    var road = flavor && flavor.road ? flavor.road : "#3d4450";
+    var accent = flavor && flavor.accent ? flavor.accent : "#5eead4";
+
+    var w = viewport.cssWidth;
+    var h = viewport.cssHeight;
+    var s = viewport.worldScale;
+    var ox = viewport.offsetX;
+    var oy = viewport.offsetY;
+    var ww = sim.worldWidth;
+    var wh = sim.worldHeight;
+
+    ctx.save();
+    ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.scale(s, s);
+
+    ctx.fillStyle = road;
+    ctx.fillRect(0, 0, ww, wh);
+
+    ctx.fillStyle = shoulder;
+    ctx.fillRect(8, 0, 14, wh);
+    ctx.fillRect(ww - 22, 0, 14, wh);
+
+    ctx.fillStyle = road;
+    ctx.fillRect(22, 0, ww - 44, wh);
+
+    drawRoadMarks(ctx, sim, ww, wh);
+
+    if (opts.remoteShips && opts.remoteShips.length) {
+      var ri;
+      for (ri = 0; ri < opts.remoteShips.length; ri++) {
+        drawRemoteShip(ctx, opts.remoteShips[ri], accent);
+      }
+    }
+
+    var now = performance.now() / 1000;
+    if (combat && combat.specialFlashUntil > now) {
+      ctx.strokeStyle = "rgba(134, 239, 172, 0.45)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(sim.playerX, sim.playerY, 12, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (combat) {
+      var i;
+      for (i = 0; i < combat.loot.length; i++) {
+        drawLoot(ctx, combat.loot[i]);
+      }
+      for (i = 0; i < combat.enemies.length; i++) {
+        var enemy = combat.enemies[i];
+        if (!enemy.alive) {
+          continue;
+        }
+        drawEnemy(ctx, enemy);
+        if (combat.lockEnemyId === enemy.id) {
+          drawLockMarker(ctx, enemy);
+        }
+      }
+    }
+
+    drawPlayer(ctx, sim, accent);
+
+    ctx.restore();
+
+    if (opts.mapApi && opts.locationFix && opts.flavor) {
+      opts.mapApi.drawOwnerMap(ctx, w, h, opts.locationFix, opts.flavor);
+    }
+
+    if (opts.cockpit && opts.cockpit.isEnabled()) {
+      opts.cockpit.drawCockpitFrame(ctx, w, h);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {import("./sim.js").SimState} sim
+   * @param {number} ww
+   * @param {number} wh
+   */
+  function drawRoadMarks(ctx, sim, ww, wh) {
+    var laneX = ww * 0.5;
+    var segment = 8;
+    var offset = sim.roadScroll % segment;
+    ctx.strokeStyle = "#d8dde6";
+    ctx.lineWidth = 0.35;
+    ctx.setLineDash([2.2, 2.2]);
+    var y = -offset;
+    while (y < wh + segment) {
+      ctx.beginPath();
+      ctx.moveTo(laneX, y);
+      ctx.lineTo(laneX, y + 2.2);
+      ctx.stroke();
+      y += segment;
+    }
+    ctx.setLineDash([]);
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ x: number, y: number, color: string, mark: string }} enemy
+   */
+  function drawEnemy(ctx, enemy) {
+    var x = enemy.x;
+    var y = enemy.y;
+    var r = 2.4;
+    ctx.fillStyle = COLOR_FILL[enemy.color] || "#888";
+    ctx.beginPath();
+    ctx.rect(x - r, y - r, r * 2, r * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 0.25;
+    ctx.stroke();
+    drawMark(ctx, enemy);
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ x: number, y: number, mark: string }} enemy
+   */
+  function drawMark(ctx, enemy) {
+    var x = enemy.x;
+    var y = enemy.y;
+    ctx.strokeStyle = "#f8fafc";
+    ctx.fillStyle = "#f8fafc";
+    ctx.lineWidth = 0.3;
+    if (enemy.mark === "chevron") {
+      ctx.beginPath();
+      ctx.moveTo(x, y - 1.1);
+      ctx.lineTo(x - 0.9, y + 0.2);
+      ctx.lineTo(x + 0.9, y + 0.2);
+      ctx.closePath();
+      ctx.stroke();
+    } else if (enemy.mark === "stripe") {
+      ctx.beginPath();
+      ctx.moveTo(x - 0.9, y - 0.2);
+      ctx.lineTo(x + 0.9, y + 0.2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - 0.9, y + 0.4);
+      ctx.lineTo(x + 0.9, y + 0.8);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(x, y - 0.9);
+      ctx.lineTo(x + 0.9, y);
+      ctx.lineTo(x, y + 0.9);
+      ctx.lineTo(x - 0.9, y);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ x: number, y: number }} enemy
+   */
+  function drawLockMarker(ctx, enemy) {
+    var x = enemy.x;
+    var y = enemy.y;
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = 0.35;
+    ctx.beginPath();
+    ctx.arc(x, y, 3.6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y - 4.8);
+    ctx.lineTo(x, y - 6.2);
+    ctx.stroke();
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ x: number, y: number }} loot
+   */
+  function drawLoot(ctx, loot) {
+    ctx.fillStyle = "#fde047";
+    ctx.beginPath();
+    ctx.arc(loot.x, loot.y, 0.9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {import("./sim.js").SimState} sim
+   */
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ publicId: string, lane: number, shipY: number, score: number, fireFlash: boolean }} ship
+   * @param {string} accent
+   */
+  function drawRemoteShip(ctx, ship, accent) {
+    var x = ship.lane;
+    var y = ship.shipY;
+    var size = 2.6;
+    ctx.fillStyle = ship.fireFlash ? "#fca5a5" : "#94a3b8";
+    ctx.beginPath();
+    ctx.moveTo(x, y - size);
+    ctx.lineTo(x - size * 0.6, y + size * 0.35);
+    ctx.lineTo(x + size * 0.6, y + size * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "2px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(String(ship.score), x, y - size - 1.2);
+    ctx.fillText(ship.publicId.slice(0, 10), x, y + size + 2.4);
+  }
+
+  function drawPlayer(ctx, sim, accent) {
+    var x = sim.playerX;
+    var y = sim.playerY;
+    var size = 3.2;
+    ctx.fillStyle = accent || "#5eead4";
+    ctx.beginPath();
+    ctx.moveTo(x, y - size);
+    ctx.lineTo(x - size * 0.65, y + size * 0.4);
+    ctx.lineTo(x + size * 0.65, y + size * 0.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#0f766e";
+    ctx.lineWidth = 0.2;
+    ctx.stroke();
+  }
+
+  var api = {
+    drawFrame: drawFrame,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopRender = api;
+  }
+})();
+/**
+ * Canvas CSS size vs backing store with DPR cap.
+ */
+(function resizeModule() {
+  "use strict";
+
+  var DPR_CAP = 2.0;
+
+  /**
+   * @typedef {{
+   *   cssWidth: number,
+   *   cssHeight: number,
+   *   dpr: number,
+   *   worldScale: number,
+   *   worldWidth: number,
+   *   worldHeight: number,
+   *   offsetX: number,
+   *   offsetY: number
+   * }} Viewport
+   */
+
+  /**
+   * @param {number} worldWidth
+   * @param {number} worldHeight
+   * @returns {Viewport}
+   */
+  function createViewport(worldWidth, worldHeight) {
+    return {
+      cssWidth: 0,
+      cssHeight: 0,
+      dpr: 1,
+      worldScale: 1,
+      worldWidth: worldWidth,
+      worldHeight: worldHeight,
+      offsetX: 0,
+      offsetY: 0,
+    };
+  }
+
+  /**
+   * @param {HTMLCanvasElement} canvas
+   * @param {Viewport} viewport
+   * @param {CanvasRenderingContext2D} ctx
+   */
+  function applyResize(canvas, viewport, ctx) {
+    var vv = window.visualViewport;
+    var cssW = vv ? vv.width : window.innerWidth;
+    var cssH = vv ? vv.height : window.innerHeight;
+    var dpr = window.devicePixelRatio || 1;
+    if (dpr > DPR_CAP) {
+      dpr = DPR_CAP;
+    }
+
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    canvas.width = Math.max(1, Math.round(cssW * dpr));
+    canvas.height = Math.max(1, Math.round(cssH * dpr));
+
+    var scaleW = cssW / viewport.worldWidth;
+    var scaleH = cssH / viewport.worldHeight;
+    var worldScale = scaleW < scaleH ? scaleW : scaleH;
+
+    viewport.cssWidth = cssW;
+    viewport.cssHeight = cssH;
+    viewport.dpr = dpr;
+    viewport.worldScale = worldScale;
+    viewport.offsetX = (cssW - viewport.worldWidth * worldScale) * 0.5;
+    viewport.offsetY = (cssH - viewport.worldHeight * worldScale) * 0.5;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  /**
+   * @param {Viewport} viewport
+   * @param {number} worldX
+   * @param {number} worldY
+   * @returns {{ x: number, y: number }}
+   */
+  function worldToCss(viewport, worldX, worldY) {
+    return {
+      x: viewport.offsetX + worldX * viewport.worldScale,
+      y: viewport.offsetY + worldY * viewport.worldScale,
+    };
+  }
+
+  var api = {
+    DPR_CAP: DPR_CAP,
+    createViewport: createViewport,
+    applyResize: applyResize,
+    worldToCss: worldToCss,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopResize = api;
+  }
+})();
+/**
+ * WASD, arrows, Space fire, E special. Ignores text fields.
+ */
+(function inputKeyboardModule() {
+  "use strict";
+
+  /** @typedef {{ steer: number, source: string | null }} ControlState */
+
+  var LEFT_KEYS = { ArrowLeft: true, KeyA: true, a: true };
+  var RIGHT_KEYS = { ArrowRight: true, KeyD: true, d: true };
+
+  /**
+   * @param {EventTarget | null} target
+   * @returns {boolean}
+   */
+  function isTextEntryTarget(target) {
+    if (!target || !(target instanceof Element)) {
+      return false;
+    }
+    var tag = target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+      return true;
+    }
+    if (target.isContentEditable) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * @param {ControlState} control
+   * @param {() => string} getMode
+   * @param {{ filterSteer: function(number, string|null, string): number }} modeApi
+   * @param {{ enqueue: function(queue: object, partial: object): object }} commandApi
+   * @param {object} queue
+   * @param {{ onGameplayKey?: function(): void }} [opts]
+   */
+  function attachKeyboard(control, getMode, modeApi, commandApi, queue, opts) {
+    opts = opts || {};
+    var heldLeft = false;
+    var heldRight = false;
+
+    function notifyGameplay() {
+      if (opts.onGameplayKey) {
+        opts.onGameplayKey();
+      }
+    }
+
+    function recompute() {
+      var raw = 0;
+      if (heldLeft && !heldRight) {
+        raw = -1;
+      } else if (heldRight && !heldLeft) {
+        raw = 1;
+      }
+      var mode = getMode();
+      var steer = modeApi.filterSteer(raw, "keyboard", mode);
+      control.steer = steer;
+      if (raw !== 0 && steer !== 0) {
+        control.source = "keyboard";
+      } else if (raw === 0 && control.source === "keyboard") {
+        control.source = null;
+      }
+    }
+
+    /**
+     * @param {KeyboardEvent} ev
+     */
+    function onKeyDown(ev) {
+      if (isTextEntryTarget(ev.target)) {
+        return;
+      }
+      var handled = false;
+      if (LEFT_KEYS[ev.code] || LEFT_KEYS[ev.key]) {
+        heldLeft = true;
+        handled = true;
+      }
+      if (RIGHT_KEYS[ev.code] || RIGHT_KEYS[ev.key]) {
+        heldRight = true;
+        handled = true;
+      }
+      if (ev.code === "Space" || ev.key === " ") {
+        commandApi.enqueue(queue, {
+          type: "fire",
+          payload: { side: "center" },
+          source: "keyboard",
+        });
+        ev.preventDefault();
+        notifyGameplay();
+        return;
+      }
+      if (ev.code === "KeyE" || ev.key === "e" || ev.key === "E") {
+        commandApi.enqueue(queue, {
+          type: "special",
+          payload: {},
+          source: "keyboard",
+        });
+        ev.preventDefault();
+        notifyGameplay();
+        return;
+      }
+      if (handled) {
+        ev.preventDefault();
+        notifyGameplay();
+      }
+      recompute();
+    }
+
+    /**
+     * @param {KeyboardEvent} ev
+     */
+    function onKeyUp(ev) {
+      if (isTextEntryTarget(ev.target)) {
+        return;
+      }
+      if (LEFT_KEYS[ev.code] || LEFT_KEYS[ev.key]) {
+        heldLeft = false;
+      }
+      if (RIGHT_KEYS[ev.code] || RIGHT_KEYS[ev.key]) {
+        heldRight = false;
+      }
+      recompute();
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+
+    return {
+      detach: function () {
+        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keyup", onKeyUp);
+      },
+      pressFire: function () {
+        commandApi.enqueue(queue, {
+          type: "fire",
+          payload: { side: "center" },
+          source: "keyboard",
+        });
+      },
+      pressSpecial: function () {
+        commandApi.enqueue(queue, {
+          type: "special",
+          payload: {},
+          source: "keyboard",
+        });
+      },
+    };
+  }
+
+  var api = {
+    attachKeyboard: attachKeyboard,
+    isTextEntryTarget: isTextEntryTarget,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopInputKeyboard = api;
+  }
+})();
+/**
+ * Gamepad poll: remap table, steer axis, fire/special edges, disconnect zero steer.
+ */
+(function inputGamepadModule() {
+  "use strict";
+
+  var DEADZONE = 0.2;
+
+  /** @type {{ steerAxis: number, steerAltAxis: number, dpadLeft: number, dpadRight: number, fire: number, specialPrimary: number, specialAlt: number }} */
+  var REMAP = {
+    steerAxis: 0,
+    steerAltAxis: 2,
+    dpadLeft: 14,
+    dpadRight: 15,
+    fire: 0,
+    specialPrimary: 1,
+    specialAlt: 4,
+  };
+
+  /**
+   * @returns {{
+   *   slotIndex: number | null,
+   *   prevButtons: boolean[],
+   *   injectPad: Gamepad | null,
+   *   disconnectSteerActive: boolean
+   * }}
+   */
+  function createGamepadState() {
+    return {
+      slotIndex: null,
+      prevButtons: [],
+      injectPad: null,
+      disconnectSteerActive: false,
+    };
+  }
+
+  /**
+   * @param {number} value
+   * @returns {number}
+   */
+  function applyDeadzone(value) {
+    if (value > DEADZONE) {
+      return value;
+    }
+    if (value < -DEADZONE) {
+      return value;
+    }
+    return 0;
+  }
+
+  /**
+   * @param {Gamepad | null} pad
+   * @returns {number}
+   */
+  function readSteerAxis(pad) {
+    if (!pad) {
+      return 0;
+    }
+    var raw = 0;
+    if (pad.axes.length > REMAP.steerAxis) {
+      raw = pad.axes[REMAP.steerAxis];
+    }
+    if (Math.abs(raw) < DEADZONE && pad.axes.length > REMAP.steerAltAxis) {
+      raw = pad.axes[REMAP.steerAltAxis];
+    }
+    var steer = applyDeadzone(raw);
+    if (steer !== 0) {
+      return steer;
+    }
+    if (pad.buttons[REMAP.dpadLeft] && pad.buttons[REMAP.dpadLeft].pressed) {
+      return -1;
+    }
+    if (pad.buttons[REMAP.dpadRight] && pad.buttons[REMAP.dpadRight].pressed) {
+      return 1;
+    }
+    return 0;
+  }
+
+  /**
+   * @param {object} state
+   * @returns {Gamepad | null}
+   */
+  function activePad(state) {
+    if (state.injectPad) {
+      return state.injectPad;
+    }
+    if (state.slotIndex === null) {
+      return null;
+    }
+    var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    if (!pads || !pads[state.slotIndex]) {
+      return null;
+    }
+    return pads[state.slotIndex];
+  }
+
+  /**
+   * @param {{ steer: number, source: string | null }} control
+   * @param {() => string} getMode
+   * @param {{ filterSteer: function(number, string|null, string): number }} modeApi
+   * @param {{ enqueue: function(object, object): object }} commandApi
+   * @param {object} queue
+   * @param {ReturnType<typeof createGamepadState>} state
+   * @param {{ onConnected?: function(): void }} opts
+   */
+  function pollGamepad(control, getMode, modeApi, commandApi, queue, state, opts) {
+    opts = opts || {};
+    var pad = activePad(state);
+    var mode = getMode();
+    if (!pad) {
+      if (control.source === "gamepad") {
+        control.steer = 0;
+        control.source = null;
+      }
+      state.prevButtons = [];
+      return;
+    }
+
+    var steerRaw = readSteerAxis(pad);
+    var steer = modeApi.filterSteer(steerRaw, "gamepad", mode);
+    if (steerRaw !== 0 && steer !== 0) {
+      control.steer = steer;
+      control.source = "gamepad";
+    } else if (control.source === "gamepad") {
+      control.steer = 0;
+      control.source = null;
+    }
+
+    var buttons = pad.buttons;
+    var i;
+    for (i = 0; i < buttons.length; i++) {
+      var pressed = !!buttons[i].pressed;
+      var was = !!state.prevButtons[i];
+      if (pressed && !was) {
+        if (i === REMAP.fire) {
+          commandApi.enqueue(queue, {
+            type: "fire",
+            payload: { side: "center" },
+            source: "gamepad",
+          });
+        } else if (i === REMAP.specialPrimary || i === REMAP.specialAlt) {
+          commandApi.enqueue(queue, {
+            type: "special",
+            payload: {},
+            source: "gamepad",
+          });
+        }
+      }
+      state.prevButtons[i] = pressed;
+    }
+    while (state.prevButtons.length < buttons.length) {
+      state.prevButtons.push(false);
+    }
+  }
+
+  /**
+   * @param {ReturnType<typeof createGamepadState>} state
+   * @param {{ onConnected?: function(): void, onDisconnected?: function(): void }} opts
+   * @param {{ steer: number, source: string | null }} control
+   */
+  function attachGamepadListeners(state, control, opts) {
+    opts = opts || {};
+
+    /**
+     * @param {GamepadEvent} ev
+     */
+    function onConnect(ev) {
+      state.slotIndex = ev.gamepad.index;
+      state.disconnectSteerActive = false;
+      if (opts.onConnected) {
+        opts.onConnected();
+      }
+    }
+
+    /**
+     * @param {GamepadEvent} ev
+     */
+    function onDisconnect(ev) {
+      if (state.slotIndex === ev.gamepad.index) {
+        state.slotIndex = null;
+      }
+      state.injectPad = null;
+      control.steer = 0;
+      control.source = null;
+      state.prevButtons = [];
+      if (opts.onDisconnected) {
+        opts.onDisconnected();
+      }
+    }
+
+    window.addEventListener("gamepadconnected", onConnect);
+    window.addEventListener("gamepaddisconnected", onDisconnect);
+
+    return function detach() {
+      window.removeEventListener("gamepadconnected", onConnect);
+      window.removeEventListener("gamepaddisconnected", onDisconnect);
+    };
+  }
+
+  /**
+   * @param {ReturnType<typeof createGamepadState>} state
+   * @param {{ axes?: number[], buttons?: boolean[] }} spec
+   */
+  function injectTestGamepad(state, spec) {
+    var axes = spec.axes || [0, 0];
+    var buttons = spec.buttons || [];
+    var btns = [];
+    var i;
+    for (i = 0; i < 16; i++) {
+      btns.push({ pressed: !!buttons[i], value: buttons[i] ? 1 : 0 });
+    }
+    state.injectPad = {
+      axes: axes,
+      buttons: btns,
+      connected: true,
+      id: "test-pad",
+      index: 0,
+      mapping: "standard",
+      timestamp: performance.now(),
+    };
+    state.slotIndex = 0;
+  }
+
+  function clearInjectedGamepad(state) {
+    state.injectPad = null;
+    state.slotIndex = null;
+  }
+
+  /**
+   * @param {{ steer: number, source: string | null }} control
+   * @param {() => string} getMode
+   * @param {object} modeApi
+   * @param {object} commandApi
+   * @param {object} queue
+   * @param {{ onConnected?: function(): void }} [opts]
+   */
+  function attachGamepad(control, getMode, modeApi, commandApi, queue, opts) {
+    var state = createGamepadState();
+    var detach = attachGamepadListeners(state, control, opts);
+    return {
+      state: state,
+      poll: function () {
+        pollGamepad(control, getMode, modeApi, commandApi, queue, state, opts);
+      },
+      injectTestGamepad: function (spec) {
+        injectTestGamepad(state, spec);
+      },
+      clearInjectedGamepad: function () {
+        clearInjectedGamepad(state);
+        control.steer = 0;
+        control.source = null;
+      },
+      simulateDisconnect: function () {
+        clearInjectedGamepad(state);
+        control.steer = 0;
+        control.source = null;
+        state.prevButtons = [];
+        if (opts && opts.onDisconnected) {
+          opts.onDisconnected();
+        }
+      },
+      detach: detach,
+    };
+  }
+
+  var api = {
+    REMAP: REMAP,
+    attachGamepad: attachGamepad,
+    pollGamepad: pollGamepad,
+    createGamepadState: createGamepadState,
+    injectTestGamepad: injectTestGamepad,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopInputGamepad = api;
+  }
+})();
+/**
+ * Touch steer pad and fire/special targets. Hide on keyboard/pad, show on touch.
+ */
+(function inputTouchModule() {
+  "use strict";
+
+  /**
+   * @param {() => string} getMode
+   * @param {{ MODE_MOTION: string }} modeApi
+   * @param {{ steer: number, source: string | null }} control
+   * @param {{ filterSteer: function(number, string|null, string): number }} modeApiFull
+   * @param {{ enqueue: function(object, object): object }} commandApi
+   * @param {object} queue
+   */
+  function attachTouch(control, getMode, modeApi, modeApiFull, commandApi, queue) {
+    var root = document.createElement("div");
+    root.id = "touch-overlay";
+    root.setAttribute("aria-hidden", "true");
+
+    var steerPad = document.createElement("div");
+    steerPad.className = "touch-steer";
+    steerPad.setAttribute("role", "presentation");
+
+    var actions = document.createElement("div");
+    actions.className = "touch-actions";
+
+    var fireBtn = document.createElement("button");
+    fireBtn.type = "button";
+    fireBtn.className = "touch-fire";
+    fireBtn.textContent = "Fire";
+
+    var specialBtn = document.createElement("button");
+    specialBtn.type = "button";
+    specialBtn.className = "touch-special";
+    specialBtn.textContent = "Special";
+
+    actions.appendChild(fireBtn);
+    actions.appendChild(specialBtn);
+    root.appendChild(steerPad);
+    root.appendChild(actions);
+    document.body.appendChild(root);
+
+    var visible = true;
+    var steerPointerId = null;
+
+    function shouldShow() {
+      return getMode() !== modeApi.MODE_MOTION;
+    }
+
+    function syncDisplay() {
+      if (!shouldShow() || !visible) {
+        root.style.display = "none";
+        root.setAttribute("aria-hidden", "true");
+      } else {
+        root.style.display = "flex";
+        root.setAttribute("aria-hidden", "false");
+      }
+    }
+
+    function hide() {
+      visible = false;
+      steerPointerId = null;
+      if (control.source === "touch") {
+        control.steer = 0;
+        control.source = null;
+      }
+      syncDisplay();
+    }
+
+    function show() {
+      if (!shouldShow()) {
+        return;
+      }
+      visible = true;
+      syncDisplay();
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function onFirstTouch(ev) {
+      if (!visible && shouldShow()) {
+        show();
+      }
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function onSteerDown(ev) {
+      if (!visible || !shouldShow()) {
+        return;
+      }
+      steerPointerId = ev.pointerId;
+      steerPad.setPointerCapture(ev.pointerId);
+      updateSteerFromEvent(ev);
+      ev.preventDefault();
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function updateSteerFromEvent(ev) {
+      var rect = steerPad.getBoundingClientRect();
+      var mid = rect.left + rect.width * 0.5;
+      var t = (ev.clientX - mid) / (rect.width * 0.5);
+      if (t < -1) {
+        t = -1;
+      }
+      if (t > 1) {
+        t = 1;
+      }
+      var steer = modeApiFull.filterSteer(t, "touch", getMode());
+      control.steer = steer;
+      if (steer !== 0) {
+        control.source = "touch";
+      }
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function onSteerMove(ev) {
+      if (ev.pointerId !== steerPointerId) {
+        return;
+      }
+      updateSteerFromEvent(ev);
+      ev.preventDefault();
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function onSteerUp(ev) {
+      if (ev.pointerId !== steerPointerId) {
+        return;
+      }
+      steerPointerId = null;
+      if (control.source === "touch") {
+        control.steer = 0;
+        control.source = null;
+      }
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     */
+    function onBodyPointer(ev) {
+      if (visible || !shouldShow()) {
+        return;
+      }
+      var t = ev.target;
+      if (t instanceof Element && t.closest("#typed-input-wrap")) {
+        return;
+      }
+      show();
+    }
+
+    document.addEventListener("pointerdown", onBodyPointer);
+
+    steerPad.addEventListener("pointerdown", onSteerDown);
+    steerPad.addEventListener("pointermove", onSteerMove);
+    steerPad.addEventListener("pointerup", onSteerUp);
+    steerPad.addEventListener("pointercancel", onSteerUp);
+
+    fireBtn.addEventListener("click", function () {
+      commandApi.enqueue(queue, {
+        type: "fire",
+        payload: { side: "center" },
+        source: "touch",
+      });
+    });
+    specialBtn.addEventListener("click", function () {
+      commandApi.enqueue(queue, {
+        type: "special",
+        payload: {},
+        source: "touch",
+      });
+    });
+
+    syncDisplay();
+
+    return {
+      hide: hide,
+      show: show,
+      isVisible: function () {
+        return visible && shouldShow() && root.style.display !== "none";
+      },
+      rootElement: root,
+      syncDisplay: syncDisplay,
+      destroy: function () {
+        root.remove();
+      },
+    };
+  }
+
+  var api = {
+    attachTouch: attachTouch,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopInputTouch = api;
+  }
+})();
+/**
+ * Visible text field that calls parseIntent and enqueues commands.
+ */
+(function inputTypedModule() {
+  "use strict";
+
+  /**
+   * @param {{
+   *   onCommands: (cmds: object[]) => void,
+   *   parseIntent: (text: string) => object[]
+   * }} opts
+   */
+  function attachTypedInput(opts) {
+    var wrap = document.createElement("div");
+    wrap.id = "typed-input-wrap";
+    wrap.setAttribute("aria-label", "Typed combat commands");
+
+    var input = document.createElement("input");
+    input.type = "text";
+    input.id = "typed-command";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.placeholder = "shoot red, fire left, use special...";
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Send";
+
+    function submit() {
+      var text = input.value;
+      var cmds = opts.parseIntent(text);
+      if (cmds.length === 0) {
+        return;
+      }
+      opts.onCommands(cmds);
+      input.value = "";
+      input.blur();
+    }
+
+    input.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        submit();
+      }
+    });
+    btn.addEventListener("click", submit);
+
+    wrap.appendChild(input);
+    wrap.appendChild(btn);
+    document.body.appendChild(wrap);
+
+    return {
+      wrapElement: wrap,
+      setVisible: function (show) {
+        wrap.style.display = show ? "flex" : "none";
+      },
+      submitText: function (text) {
+        var cmds = opts.parseIntent(text);
+        if (cmds.length) {
+          opts.onCommands(cmds);
+        }
+        return cmds;
+      },
+      destroy: function () {
+        wrap.remove();
+      },
+    };
+  }
+
+  var api = {
+    attachTypedInput: attachTypedInput,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopInputTyped = api;
+  }
+})();
+/**
+ * Speech adapter: transcripts go to parseIntent, enqueue source voice.
+ */
+(function inputVoiceModule() {
+  "use strict";
+
+  var UNAVAILABLE_MSG = "Voice unavailable. Use typed commands.";
+
+  /**
+   * @returns {typeof SpeechRecognition | null}
+   */
+  function getSpeechCtor() {
+    var g = typeof globalThis !== "undefined" ? globalThis : window;
+    return g.SpeechRecognition || g.webkitSpeechRecognition || null;
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  function hasGetUserMedia() {
+    return !!(
+      navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function"
+    );
+  }
+
+  /**
+   * @returns {boolean}
+   */
+  function isVoicePlatformAvailable() {
+    return !!getSpeechCtor() && hasGetUserMedia();
+  }
+
+  /**
+   * @param {{
+   *   parseIntent: (text: string) => object[],
+   *   onVoiceCommands: (cmds: object[]) => void,
+   *   getMode: () => string,
+   *   modeBoot: string
+   * }} opts
+   */
+  function attachVoiceInput(opts) {
+    var hud = document.createElement("div");
+    hud.id = "voice-hud";
+    hud.setAttribute("aria-live", "polite");
+
+    var listenBtn = document.createElement("button");
+    listenBtn.type = "button";
+    listenBtn.id = "voice-listen";
+    listenBtn.textContent = "Listen";
+
+    var wrap = document.createElement("div");
+    wrap.id = "voice-controls";
+    wrap.appendChild(hud);
+    wrap.appendChild(listenBtn);
+    document.body.appendChild(wrap);
+
+    var available = isVoicePlatformAvailable();
+    var listening = false;
+    var gestureArmed = false;
+    /** @type {SpeechRecognition | null} */
+    var recognition = null;
+    var forcedUnavailable = false;
+
+    /**
+     * @returns {boolean}
+     */
+    function voiceReady() {
+      return available && !forcedUnavailable;
+    }
+
+    function setHud(text) {
+      hud.textContent = text;
+    }
+
+    function refreshUi() {
+      var inBoot = opts.getMode() === opts.modeBoot;
+      if (!voiceReady() || inBoot) {
+        wrap.style.display = inBoot ? "none" : "flex";
+        listenBtn.style.display = "none";
+        if (!voiceReady()) {
+          setHud(UNAVAILABLE_MSG);
+        }
+        return;
+      }
+      wrap.style.display = "flex";
+      listenBtn.style.display = "block";
+      if (listening) {
+        setHud("Listening...");
+      } else {
+        setHud("Tap Listen, then speak a command.");
+      }
+    }
+
+    function stopRecognition() {
+      listening = false;
+      gestureArmed = false;
+      if (recognition) {
+        try {
+          recognition.stop();
+        } catch (e) {
+          /* ignore */
+        }
+        recognition = null;
+      }
+    }
+
+    function markUnavailable() {
+      forcedUnavailable = true;
+      available = false;
+      stopRecognition();
+      setHud(UNAVAILABLE_MSG);
+      listenBtn.style.display = "none";
+    }
+
+    /**
+     * @param {string} text
+     */
+    function deliverFinalTranscript(text) {
+      var cmds = opts.parseIntent(text);
+      if (!cmds.length) {
+        return cmds;
+      }
+      var voiceCmds = [];
+      var i;
+      for (i = 0; i < cmds.length; i++) {
+        var copy = {
+          type: cmds[i].type,
+          payload: cmds[i].payload ? Object.assign({}, cmds[i].payload) : {},
+          source: "voice",
+        };
+        voiceCmds.push(copy);
+      }
+      opts.onVoiceCommands(voiceCmds);
+      return voiceCmds;
+    }
+
+    /**
+     * @param {SpeechRecognitionEvent} ev
+     */
+    function handleResult(ev) {
+      var i;
+      for (i = ev.resultIndex; i < ev.results.length; i++) {
+        var res = ev.results[i];
+        if (!res.isFinal) {
+          continue;
+        }
+        var text = res[0].transcript;
+        deliverFinalTranscript(text);
+      }
+    }
+
+    function startListening() {
+      if (!voiceReady() || opts.getMode() === opts.modeBoot) {
+        return false;
+      }
+      var Ctor = getSpeechCtor();
+      if (!Ctor) {
+        markUnavailable();
+        return false;
+      }
+      stopRecognition();
+      gestureArmed = true;
+      recognition = new Ctor();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+
+      recognition.onresult = function (ev) {
+        handleResult(ev);
+      };
+      recognition.onerror = function (ev) {
+        var err = ev.error || "error";
+        if (
+          err === "not-allowed" ||
+          err === "service-not-allowed" ||
+          err === "audio-capture"
+        ) {
+          markUnavailable();
+        } else {
+          stopRecognition();
+          if (voiceReady()) {
+            setHud("Voice error. Tap Listen to try again.");
+          }
+        }
+        refreshUi();
+      };
+      recognition.onend = function () {
+        listening = false;
+        refreshUi();
+      };
+
+      try {
+        recognition.start();
+        listening = true;
+        refreshUi();
+        return true;
+      } catch (e) {
+        markUnavailable();
+        return false;
+      }
+    }
+
+    listenBtn.addEventListener("click", function () {
+      if (!voiceReady() || opts.getMode() === opts.modeBoot) {
+        return;
+      }
+      startListening();
+    });
+
+    if (!voiceReady()) {
+      setHud(UNAVAILABLE_MSG);
+      listenBtn.style.display = "none";
+    } else {
+      setHud("Tap Listen, then speak a command.");
+    }
+    refreshUi();
+
+    return {
+      syncForMode: refreshUi,
+      isAvailable: function () {
+        return voiceReady();
+      },
+      getHudText: function () {
+        return hud.textContent;
+      },
+      isListening: function () {
+        return listening;
+      },
+      isListenVisible: function () {
+        return listenBtn.style.display !== "none" && voiceReady();
+      },
+      markUnavailable: markUnavailable,
+      forcePlatformUnavailable: function () {
+        markUnavailable();
+      },
+      simulateListenGesture: function () {
+        return startListening();
+      },
+      deliverFinalTranscript: function (text) {
+        if (!gestureArmed && !listening) {
+          return [];
+        }
+        return deliverFinalTranscript(text);
+      },
+      armUserGesture: function () {
+        if (voiceReady()) {
+          gestureArmed = true;
+        }
+      },
+      destroy: function () {
+        stopRecognition();
+        wrap.remove();
+      },
+    };
+  }
+
+  var api = {
+    UNAVAILABLE_MSG: UNAVAILABLE_MSG,
+    attachVoiceInput: attachVoiceInput,
+    isVoicePlatformAvailable: isVoicePlatformAvailable,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopInputVoice = api;
+  }
+})();
+/**
+ * requestAnimationFrame tick: drain queue, steer, sim, render.
+ */
+(function loopModule() {
+  "use strict";
+
+  /**
+   * @param {{
+   *   onTick: (dt: number) => void,
+   *   onFrame: () => void
+   * }} opts
+   * @returns {() => void}
+   */
+  function startGameLoop(opts) {
+    var running = true;
+    var last = performance.now();
+
+    function frame(now) {
+      if (!running) {
+        return;
+      }
+      var dt = (now - last) / 1000;
+      last = now;
+      if (dt > 0.05) {
+        dt = 0.05;
+      }
+      opts.onTick(dt);
+      opts.onFrame();
+      requestAnimationFrame(frame);
+    }
+
+    requestAnimationFrame(frame);
+
+    return function stop() {
+      running = false;
+    };
+  }
+
+  var api = {
+    startGameLoop: startGameLoop,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopLoop = api;
+  }
+})();
+/**
+ * Boot warning, parked vs voice-only choice, location opt-in, mode switch bar.
+ */
+(function uiModule() {
+  "use strict";
+
+  /**
+   * @typedef {{
+   *   locationOptIn: boolean,
+   *   onChooseParked: (locationOptIn: boolean) => void,
+   *   onChooseMotion: (locationOptIn: boolean) => void,
+   *   onSwitchParked: () => void,
+   *   onSwitchMotion: () => void,
+   *   getMode: () => string
+   * }} BootUiOptions
+   */
+
+  /**
+   * @param {BootUiOptions} opts
+   */
+  function attachBootUi(opts) {
+    var boot = document.createElement("div");
+    boot.id = "boot-overlay";
+    boot.setAttribute("role", "dialog");
+    boot.setAttribute("aria-modal", "true");
+    boot.setAttribute("aria-labelledby", "boot-title");
+
+    var title = document.createElement("h2");
+    title.id = "boot-title";
+    title.textContent = "Gauntlet Loop";
+
+    var warn = document.createElement("p");
+    warn.className = "boot-warn";
+    warn.textContent =
+      "Voice only does not make play while driving safe. The parked confirm is how visual controls unlock.";
+
+    var detail = document.createElement("p");
+    detail.className = "boot-detail";
+    detail.textContent =
+      "Choose parked to steer and use the screen. Choose voice only for typed commands while on-rails.";
+
+    var locLabel = document.createElement("label");
+    locLabel.className = "boot-location";
+    var locBox = document.createElement("input");
+    locBox.type = "checkbox";
+    locBox.id = "location-opt-in";
+    locBox.checked = false;
+    locLabel.appendChild(locBox);
+    locLabel.appendChild(document.createTextNode(" Share my location (optional, off by default)"));
+
+    var actions = document.createElement("div");
+    actions.className = "boot-actions";
+
+    var parkedBtn = document.createElement("button");
+    parkedBtn.type = "button";
+    parkedBtn.id = "boot-parked";
+    parkedBtn.textContent = "I am parked";
+
+    var motionBtn = document.createElement("button");
+    motionBtn.type = "button";
+    motionBtn.id = "boot-motion";
+    motionBtn.textContent = "Voice only";
+
+    actions.appendChild(parkedBtn);
+    actions.appendChild(motionBtn);
+
+    boot.appendChild(title);
+    boot.appendChild(warn);
+    boot.appendChild(detail);
+    boot.appendChild(locLabel);
+    boot.appendChild(actions);
+    document.body.appendChild(boot);
+
+    var switchBar = document.createElement("div");
+    switchBar.id = "mode-switch";
+    switchBar.style.display = "none";
+
+    var toParked = document.createElement("button");
+    toParked.type = "button";
+    toParked.textContent = "Parked";
+
+    var toMotion = document.createElement("button");
+    toMotion.type = "button";
+    toMotion.textContent = "Voice only";
+
+    var modeReadout = document.createElement("span");
+    modeReadout.id = "mode-readout";
+
+    switchBar.appendChild(modeReadout);
+    switchBar.appendChild(toParked);
+    switchBar.appendChild(toMotion);
+    document.body.appendChild(switchBar);
+
+    /** @type {{ locationOptIn: boolean }} */
+    var clientSession = { locationOptIn: false };
+
+    function readLocationOptIn() {
+      clientSession.locationOptIn = !!locBox.checked;
+      return clientSession.locationOptIn;
+    }
+
+    function dismissBoot() {
+      boot.style.display = "none";
+      switchBar.style.display = "flex";
+      syncSwitchUi();
+    }
+
+    function syncSwitchUi() {
+      var m = opts.getMode();
+      modeReadout.textContent = "Mode: " + m;
+      toParked.disabled = m === "parked";
+      toMotion.disabled = m === "motion";
+    }
+
+    parkedBtn.addEventListener("click", function () {
+      var loc = readLocationOptIn();
+      opts.onChooseParked(loc);
+      dismissBoot();
+    });
+
+    motionBtn.addEventListener("click", function () {
+      var loc = readLocationOptIn();
+      opts.onChooseMotion(loc);
+      dismissBoot();
+    });
+
+    toParked.addEventListener("click", function () {
+      opts.onSwitchParked();
+      syncSwitchUi();
+    });
+
+    toMotion.addEventListener("click", function () {
+      opts.onSwitchMotion();
+      syncSwitchUi();
+    });
+
+    return {
+      getLocationOptIn: function () {
+        return clientSession.locationOptIn;
+      },
+      isBootVisible: function () {
+        return boot.style.display !== "none";
+      },
+      syncSwitchUi: syncSwitchUi,
+      destroy: function () {
+        boot.remove();
+        switchBar.remove();
+      },
+    };
+  }
+
+  var api = {
+    attachBootUi: attachBootUi,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopUi = api;
+  }
+})();
+/**
+ * Client session: POST /v1/session, storage, Bearer auth, one-shot 401 recovery.
+ */
+(function sessionClientModule() {
+  "use strict";
+
+  var STORAGE_KEY = "gauntlet-loop-session-v1";
+  var SESSION_ERROR_ID = "session-error";
+
+  /**
+   * @typedef {{ sessionId: string, publicId: string, token: string, expiresAt: number }} StoredSession
+   */
+
+  /**
+   * @returns {StoredSession | null}
+   */
+  function loadStored() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+      var data = JSON.parse(raw);
+      if (!data || !data.token || !data.sessionId) {
+        return null;
+      }
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * @param {StoredSession} session
+   */
+  function saveStored(session) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    } catch (e) {
+      /* ignore quota */
+    }
+  }
+
+  function clearStored() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  /**
+   * @param {string | null} message
+   */
+  function setSessionError(message) {
+    var el = document.getElementById(SESSION_ERROR_ID);
+    if (!el) {
+      el = document.createElement("div");
+      el.id = SESSION_ERROR_ID;
+      el.setAttribute("role", "status");
+      document.body.appendChild(el);
+    }
+    if (!message) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.textContent = message;
+    el.style.display = "block";
+  }
+
+  /**
+   * @returns {Promise<StoredSession | null>}
+   */
+  function mintSession() {
+    return fetch("/v1/session", {
+      method: "POST",
+      cache: "no-store",
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("mint failed");
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        var session = {
+          sessionId: data.sessionId,
+          publicId: data.publicId,
+          token: data.token,
+          expiresAt: data.expiresAt,
+        };
+        saveStored(session);
+        setSessionError(null);
+        return session;
+      });
+  }
+
+  /**
+   * @param {StoredSession} session
+   * @returns {Promise<StoredSession | "unauthorized" | null>}
+   */
+  function verifySession(session) {
+    return fetch("/v1/session", {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        Authorization: "Bearer " + session.token,
+      },
+    }).then(function (res) {
+      if (res.status === 401) {
+        return "unauthorized";
+      }
+      if (!res.ok) {
+        return null;
+      }
+      return res.json().then(function (meta) {
+        session.expiresAt = meta.expiresAt;
+        saveStored(session);
+        return session;
+      });
+    });
+  }
+
+  /**
+   * @returns {Headers}
+   */
+  function authHeaders() {
+    var stored = loadStored();
+    var headers = new Headers();
+    if (stored && stored.token) {
+      headers.set("Authorization", "Bearer " + stored.token);
+    }
+    return headers;
+  }
+
+  /**
+   * @param {RequestInfo} input
+   * @param {RequestInit} [init]
+   * @returns {Promise<Response>}
+   */
+  function fetchWithAuth(input, init) {
+    init = init || {};
+    var headers = new Headers(init.headers || {});
+    var stored = loadStored();
+    if (stored && stored.token) {
+      headers.set("Authorization", "Bearer " + stored.token);
+    }
+    init.headers = headers;
+    init.cache = "no-store";
+    return fetch(input, init).then(function (res) {
+      if (res.status === 401) {
+        return handle401Once().then(function () {
+          return res;
+        });
+      }
+      return res;
+    });
+  }
+
+  var handled401 = false;
+
+  /**
+   * @returns {Promise<StoredSession | null>}
+   */
+  function handle401Once() {
+    if (handled401) {
+      return Promise.resolve(loadStored());
+    }
+    handled401 = true;
+    clearStored();
+    return mintSession().catch(function () {
+      setSessionError("Session expired. Single-player continues.");
+      return null;
+    });
+  }
+
+  /**
+   * @returns {Promise<{ session: StoredSession | null, error: string | null }>}
+   */
+  function initSession() {
+    handled401 = false;
+    var stored = loadStored();
+    if (stored) {
+      return verifySession(stored)
+        .then(function (result) {
+          if (result === "unauthorized") {
+            clearStored();
+            return mintSession();
+          }
+          if (!result) {
+            throw new Error("verify failed");
+          }
+          return result;
+        })
+        .then(function (session) {
+          return { session: session, error: null };
+        })
+        .catch(function () {
+          setSessionError("Session unavailable. Single-player continues.");
+          return { session: null, error: "unavailable" };
+        });
+    }
+    return mintSession()
+      .then(function (session) {
+        return { session: session, error: null };
+      })
+      .catch(function () {
+        setSessionError("Session unavailable. Single-player continues.");
+        return { session: null, error: "unavailable" };
+      });
+  }
+
+  /**
+   * @returns {StoredSession | null}
+   */
+  function getSession() {
+    return loadStored();
+  }
+
+  var api = {
+    STORAGE_KEY: STORAGE_KEY,
+    initSession: initSession,
+    mintSession: mintSession,
+    verifySession: verifySession,
+    authHeaders: authHeaders,
+    fetchWithAuth: fetchWithAuth,
+    handle401Once: handle401Once,
+    getSession: getSession,
+    setSessionError: setSessionError,
+    clearStored: clearStored,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopSession = api;
+  }
+})();
+/**
+ * RegionFlavor from owner fix only: palette and short label.
+ */
+(function terrainModule() {
+  "use strict";
+
+  var GENERIC = {
+    id: "generic",
+    label: "Highway",
+    shoulder: "#1e242d",
+    road: "#3d4450",
+    sky: "#0a0e14",
+    accent: "#5eead4",
+  };
+
+  /** @type {Array<{ id: string, label: string, minLat: number, maxLat: number, minLon: number, maxLon: number, shoulder: string, road: string, sky: string, accent: string }>} */
+  var REGIONS = [
+    {
+      id: "i85-huntsville",
+      label: "I-85 toward Huntsville",
+      minLat: 32.2,
+      maxLat: 35.2,
+      minLon: -87.2,
+      maxLon: -85.8,
+      shoulder: "#1a2e1f",
+      road: "#4a4f3a",
+      sky: "#0c1218",
+      accent: "#86efac",
+    },
+  ];
+
+  /**
+   * @typedef {{ lat: number | null, lon: number | null, ok: boolean, optedOut: boolean }} FixLike
+   */
+
+  /**
+   * @param {FixLike | null} fix
+   * @returns {{ id: string, label: string, shoulder: string, road: string, sky: string, accent: string }}
+   */
+  function regionFlavor(fix) {
+    if (!fix || !fix.ok || fix.optedOut) {
+      return GENERIC;
+    }
+    if (typeof fix.lat !== "number" || typeof fix.lon !== "number") {
+      return GENERIC;
+    }
+    var i;
+    for (i = 0; i < REGIONS.length; i++) {
+      var box = REGIONS[i];
+      if (
+        fix.lat >= box.minLat &&
+        fix.lat <= box.maxLat &&
+        fix.lon >= box.minLon &&
+        fix.lon <= box.maxLon
+      ) {
+        return box;
+      }
+    }
+    return GENERIC;
+  }
+
+  var api = {
+    GENERIC: GENERIC,
+    regionFlavor: regionFlavor,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopTerrain = api;
+  }
+})();
+/**
+ * Owner-only progress map: dot, region label, age string.
+ */
+(function mapModule() {
+  "use strict";
+
+  /**
+   * @typedef {{ lat: number | null, lon: number | null, recordedAt: string | null, stale: boolean, ok: boolean, optedOut: boolean, error: string | null }} LocationFix
+   */
+
+  /**
+   * @param {string | null} recordedAt
+   * @returns {string}
+   */
+  function formatAge(recordedAt) {
+    if (!recordedAt) {
+      return "age unknown";
+    }
+    var ms = Date.parse(recordedAt);
+    if (Number.isNaN(ms)) {
+      return "age unknown";
+    }
+    var mins = Math.floor((Date.now() - ms) / 60000);
+    if (mins < 1) {
+      return "just now";
+    }
+    if (mins === 1) {
+      return "1 min ago";
+    }
+    return mins + " min ago";
+  }
+
+  /**
+   * @param {LocationFix} fix
+   * @param {{ label: string }} flavor
+   * @returns {{ headline: string, age: string, dotX: number, dotY: number, showDot: boolean }}
+   */
+  function mapLayout(fix, flavor) {
+    if (fix.optedOut) {
+      return {
+        headline: "location off",
+        age: "",
+        dotX: 0.5,
+        dotY: 0.55,
+        showDot: false,
+      };
+    }
+    if (!fix.ok || fix.lat === null || fix.lon === null) {
+      return {
+        headline: "location unknown",
+        age: "",
+        dotX: 0.5,
+        dotY: 0.55,
+        showDot: false,
+      };
+    }
+    var age = formatAge(fix.recordedAt);
+    if (fix.stale) {
+      age = age + " (stale)";
+    }
+    if (fix.error) {
+      age = age + " (fetch error)";
+    }
+    return {
+      headline: flavor.label,
+      age: age,
+      dotX: 0.5,
+      dotY: 0.42,
+      showDot: true,
+    };
+  }
+
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} w
+   * @param {number} h
+   * @param {LocationFix} fix
+   * @param {{ label: string, accent: string }} flavor
+   */
+  function drawOwnerMap(ctx, w, h, fix, flavor) {
+    var pad = 10;
+    var boxW = Math.min(168, w * 0.38);
+    var boxH = 72;
+    var x = w - boxW - pad;
+    var y = pad + 36;
+
+    var layout = mapLayout(fix, flavor);
+
+    ctx.save();
+    ctx.fillStyle = "rgba(13, 17, 23, 0.88)";
+    ctx.strokeStyle = "#30363d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, y, boxW, boxH, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#c9d1d9";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("Your map", x + 8, y + 6);
+
+    ctx.fillStyle = "#e6edf3";
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.fillText(layout.headline, x + 8, y + 22);
+
+    if (layout.age) {
+      ctx.fillStyle = fix.stale ? "#fbbf24" : "#8b949e";
+      ctx.font = "10px system-ui, sans-serif";
+      ctx.fillText(layout.age, x + 8, y + 38);
+    }
+
+    if (layout.showDot) {
+      var dotPx = x + boxW * layout.dotX;
+      var dotPy = y + boxH * layout.dotY;
+      ctx.fillStyle = flavor.accent || "#5eead4";
+      ctx.beginPath();
+      ctx.arc(dotPx, dotPy, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#0f172a";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  var api = {
+    formatAge: formatAge,
+    mapLayout: mapLayout,
+    drawOwnerMap: drawOwnerMap,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopMap = api;
+  }
+})();
+/**
+ * Private location fetch, write, poll, and opt-out. No terrain art, no room.
+ */
+(function locationClientModule() {
+  "use strict";
+
+  var STALE_MS = 90 * 60 * 1000;
+  var POLL_MS = 5 * 60 * 1000;
+  var GEO_WRITE_MS = 5 * 60 * 1000;
+
+  /**
+   * @typedef {{
+   *   lat: number | null,
+   *   lon: number | null,
+   *   recordedAt: string | null,
+   *   fetchedAt: number,
+   *   stale: boolean,
+   *   ok: boolean,
+   *   optedOut: boolean,
+   *   error: string | null
+   * }} LocationFix
+   */
+
+  /**
+   * @returns {boolean}
+   */
+  function fixtureQueryEnabled() {
+    if (typeof location === "undefined") {
+      return false;
+    }
+    return /(?:\?|&)locationFixture=(?:1|stale)(?:&|$)/.test(location.search);
+  }
+
+  /**
+   * @returns {string}
+   */
+  function fixtureUrl() {
+    if (typeof location === "undefined") {
+      return "/fixtures/location.sample.json";
+    }
+    if (/(?:\?|&)locationFixture=stale(?:&|$)/.test(location.search)) {
+      return "/fixtures/location.stale.sample.json";
+    }
+    return "/fixtures/location.sample.json";
+  }
+
+  /**
+   * @returns {LocationFix}
+   */
+  function emptyFix() {
+    return {
+      lat: null,
+      lon: null,
+      recordedAt: null,
+      fetchedAt: 0,
+      stale: false,
+      ok: false,
+      optedOut: false,
+      error: null,
+    };
+  }
+
+  /**
+   * @param {object} wire
+   * @param {number} fetchedAt
+   * @returns {LocationFix}
+   */
+  function parseWire(wire, fetchedAt) {
+    if (!wire || typeof wire !== "object") {
+      return emptyFix();
+    }
+    var fix = emptyFix();
+    fix.fetchedAt = fetchedAt;
+    fix.optedOut = !!wire.optedOut;
+    if (wire.optedOut) {
+      fix.ok = false;
+      return fix;
+    }
+    fix.ok = !!wire.ok;
+    if (!fix.ok) {
+      return fix;
+    }
+    if (typeof wire.lat === "number" && typeof wire.lon === "number") {
+      fix.lat = wire.lat;
+      fix.lon = wire.lon;
+    }
+    fix.recordedAt =
+      typeof wire.recordedAt === "string" ? wire.recordedAt : null;
+    if (typeof wire.stale === "boolean") {
+      fix.stale = wire.stale;
+    } else if (fix.recordedAt) {
+      var rec = Date.parse(fix.recordedAt);
+      if (!Number.isNaN(rec)) {
+        fix.stale = fetchedAt - rec > STALE_MS;
+      }
+    }
+    if (typeof wire.accuracyM === "number") {
+      fix.accuracyM = wire.accuracyM;
+    }
+    return fix;
+  }
+
+  /**
+   * @param {object} deps
+   */
+  function createLocationService(deps) {
+    deps = deps || {};
+    var sessionClient = deps.sessionClient || globalThis.GauntletLoopSession;
+    function isFixtureMode() {
+      return !!deps.useFixture || fixtureQueryEnabled();
+    }
+
+    /** @type {LocationFix} */
+    var current = emptyFix();
+    var optedIn = false;
+    var timer = null;
+    var lastGeoWrite = 0;
+    var listeners = [];
+    var visibilityBound = false;
+
+    function notify() {
+      var i;
+      for (i = 0; i < listeners.length; i++) {
+        listeners[i](current);
+      }
+    }
+
+    /**
+     * @param {LocationFix} next
+     */
+    function applyFix(next) {
+      current = next;
+      notify();
+    }
+
+    /**
+     * @returns {Promise<LocationFix>}
+     */
+    function loadFixture() {
+      return fetch(fixtureUrl(), { cache: "no-store" })
+        .then(function (res) {
+          if (!res.ok) {
+            throw new Error("fixture failed");
+          }
+          return res.json();
+        })
+        .then(function (wire) {
+          var parsed = parseWire(wire, Date.now());
+          applyFix(parsed);
+          return parsed;
+        })
+        .catch(function () {
+          var prev = current;
+          if (prev.ok) {
+            prev.error = "fixture fetch failed";
+            applyFix(prev);
+            return prev;
+          }
+          var fail = emptyFix();
+          fail.error = "fixture fetch failed";
+          applyFix(fail);
+          return fail;
+        });
+    }
+
+    /**
+     * @returns {Promise<LocationFix>}
+     */
+    function fetchLocation() {
+      if (!optedIn) {
+        var off = emptyFix();
+        off.optedOut = true;
+        applyFix(off);
+        return Promise.resolve(off);
+      }
+      if (isFixtureMode()) {
+        return loadFixture();
+      }
+      if (!sessionClient) {
+        var noSession = emptyFix();
+        noSession.error = "no session";
+        applyFix(noSession);
+        return Promise.resolve(noSession);
+      }
+      return sessionClient
+        .fetchWithAuth("/v1/location", { method: "GET" })
+        .then(function (res) {
+          if (res.status === 401) {
+            var unauthorized = emptyFix();
+            unauthorized.error = "unauthorized";
+            applyFix(unauthorized);
+            return unauthorized;
+          }
+          if (!res.ok) {
+            throw new Error("get failed");
+          }
+          return res.json();
+        })
+        .then(function (wire) {
+          var parsed = parseWire(wire, Date.now());
+          applyFix(parsed);
+          return parsed;
+        })
+        .catch(function () {
+          var prev = current;
+          if (prev.ok) {
+            prev.error = "poll failed";
+            applyFix(prev);
+            return prev;
+          }
+          var fail = emptyFix();
+          fail.error = "poll failed";
+          applyFix(fail);
+          return fail;
+        });
+    }
+
+    /**
+     * @param {number} lat
+     * @param {number} lon
+     * @param {number} [accuracyM]
+     * @returns {Promise<void>}
+     */
+    function putFix(lat, lon, accuracyM) {
+      if (!optedIn || !sessionClient) {
+        return Promise.resolve();
+      }
+      if (isFixtureMode()) {
+        return Promise.resolve();
+      }
+      var body = {
+        lat: lat,
+        lon: lon,
+        recordedAt: new Date().toISOString(),
+      };
+      if (typeof accuracyM === "number") {
+        body.accuracyM = accuracyM;
+      }
+      return sessionClient
+        .fetchWithAuth("/v1/location", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        .then(function (res) {
+          if (res.ok) {
+            lastGeoWrite = Date.now();
+            return fetchLocation();
+          }
+        })
+        .catch(function () {
+          /* keep last good fix */
+        });
+    }
+
+    /**
+     * @returns {Promise<void>}
+     */
+    function deleteFix() {
+      if (!sessionClient || isFixtureMode()) {
+        var cleared = emptyFix();
+        cleared.optedOut = true;
+        applyFix(cleared);
+        return Promise.resolve();
+      }
+      return sessionClient
+        .fetchWithAuth("/v1/location", { method: "DELETE" })
+        .then(function () {
+          var cleared = emptyFix();
+          cleared.optedOut = !optedIn;
+          if (!optedIn) {
+            cleared.optedOut = true;
+          }
+          applyFix(cleared);
+        })
+        .catch(function () {
+          /* ignore */
+        });
+    }
+
+    function maybeWriteGeo() {
+      if (!optedIn || isFixtureMode()) {
+        return;
+      }
+      if (typeof navigator === "undefined" || !navigator.geolocation) {
+        return;
+      }
+      if (Date.now() - lastGeoWrite < GEO_WRITE_MS) {
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          putFix(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            pos.coords.accuracy
+          );
+        },
+        function () {
+          /* permission denied */
+        },
+        { enableHighAccuracy: false, maximumAge: GEO_WRITE_MS, timeout: 12000 }
+      );
+    }
+
+    function clearTimer() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }
+
+    function schedulePoll() {
+      clearTimer();
+      if (!optedIn) {
+        return;
+      }
+      timer = setInterval(function () {
+        if (typeof document !== "undefined" && document.hidden) {
+          return;
+        }
+        fetchLocation();
+        maybeWriteGeo();
+      }, POLL_MS);
+    }
+
+    /**
+     * @param {boolean} optIn
+     * @returns {Promise<void>}
+     */
+    function bindVisibilityOnce() {
+      if (visibilityBound || typeof document === "undefined") {
+        return;
+      }
+      visibilityBound = true;
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          clearTimer();
+          return;
+        }
+        if (optedIn) {
+          fetchLocation();
+          maybeWriteGeo();
+          schedulePoll();
+        }
+      });
+    }
+
+    function setOptIn(optIn) {
+      optedIn = !!optIn;
+      if (optedIn) {
+        bindVisibilityOnce();
+      } else {
+        clearTimer();
+      }
+      if (!sessionClient || isFixtureMode()) {
+        if (!optedIn) {
+          var off = emptyFix();
+          off.optedOut = true;
+          applyFix(off);
+        } else {
+          fetchLocation();
+          if (typeof document !== "undefined" && !document.hidden) {
+            maybeWriteGeo();
+          }
+        }
+        schedulePoll();
+        return Promise.resolve();
+      }
+      return sessionClient
+        .fetchWithAuth("/v1/session/location-opt-in", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locationOptIn: optedIn }),
+        })
+        .then(function () {
+          if (!optedIn) {
+            return deleteFix();
+          }
+          return fetchLocation().then(function () {
+            if (typeof document !== "undefined" && !document.hidden) {
+              maybeWriteGeo();
+            }
+          });
+        })
+        .then(function () {
+          schedulePoll();
+        })
+        .catch(function () {
+          schedulePoll();
+        });
+    }
+
+    function start(initialOptIn) {
+      return setOptIn(initialOptIn);
+    }
+
+    return {
+      getFix: function () {
+        return current;
+      },
+      subscribe: function (fn) {
+        listeners.push(fn);
+        return function () {
+          var idx = listeners.indexOf(fn);
+          if (idx >= 0) {
+            listeners.splice(idx, 1);
+          }
+        };
+      },
+      fetchLocation: fetchLocation,
+      putFix: putFix,
+      deleteFix: deleteFix,
+      setOptIn: setOptIn,
+      start: start,
+      stop: clearTimer,
+      maybeWriteGeo: maybeWriteGeo,
+      parseWire: parseWire,
+      STALE_MS: STALE_MS,
+    };
+  }
+
+  var api = {
+    createLocationService: createLocationService,
+    parseWire: parseWire,
+    emptyFix: emptyFix,
+    STALE_MS: STALE_MS,
+    fixtureQueryEnabled: fixtureQueryEnabled,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopLocation = api;
+  }
+})();
+/**
+ * Client RoomPresence packing (allowlisted fields only). No location import.
+ */
+(function roomPresenceModule() {
+  "use strict";
+
+  var ALLOWLIST_KEYS = [
+    "publicId",
+    "nickname",
+    "lane",
+    "shipY",
+    "score",
+    "fireFlash",
+  ];
+
+  var FORBIDDEN_KEYS = [
+    "lat",
+    "lon",
+    "accuracyM",
+    "recordedAt",
+    "sessionId",
+    "token",
+  ];
+
+  /**
+   * @param {object | null} raw
+   * @param {string} publicId
+   * @returns {object}
+   */
+  function packPresence(raw, publicId) {
+    raw = raw || {};
+    return {
+      publicId: publicId,
+      nickname: typeof raw.nickname === "string" ? raw.nickname : "",
+      lane: typeof raw.lane === "number" ? raw.lane : 50,
+      shipY: typeof raw.shipY === "number" ? raw.shipY : 82,
+      score: typeof raw.score === "number" ? raw.score : 0,
+      fireFlash: !!raw.fireFlash,
+    };
+  }
+
+  /**
+   * Mirror server allowlist check for tests.
+   * @param {object} frame
+   * @returns {object}
+   */
+  function sanitizeForWire(frame) {
+    var out = packPresence(frame, frame.publicId || "Pilot-0000");
+    var i;
+    for (i = 0; i < FORBIDDEN_KEYS.length; i++) {
+      if (Object.prototype.hasOwnProperty.call(frame, FORBIDDEN_KEYS[i])) {
+        delete out[FORBIDDEN_KEYS[i]];
+      }
+    }
+    return out;
+  }
+
+  /**
+   * @param {object} sanitized
+   * @returns {boolean}
+   */
+  function forbiddenSurvives(sanitized) {
+    var i;
+    for (i = 0; i < FORBIDDEN_KEYS.length; i++) {
+      if (Object.prototype.hasOwnProperty.call(sanitized, FORBIDDEN_KEYS[i])) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  var api = {
+    ALLOWLIST_KEYS: ALLOWLIST_KEYS,
+    FORBIDDEN_KEYS: FORBIDDEN_KEYS,
+    packPresence: packPresence,
+    sanitizeForWire: sanitizeForWire,
+    forbiddenSurvives: forbiddenSurvives,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopRoomPresence = api;
+  }
+})();
+/**
+ * Join public room `loop`, send allowlisted presence. No location import.
+ */
+(function roomClientModule() {
+  "use strict";
+
+  var POLL_MS = 200;
+  var SEND_MIN_MS = 100;
+  var HIDDEN_IDLE_MS = 12000;
+  var ROOM_ERROR_ID = "room-error";
+
+  /**
+   * @param {object} deps
+   */
+  function createRoomClient(deps) {
+    deps = deps || {};
+    var sessionClient = deps.sessionClient || globalThis.GauntletLoopSession;
+    var packPresence =
+      (deps.packPresence && deps.packPresence.packPresence) ||
+      (globalThis.GauntletLoopRoomPresence &&
+        globalThis.GauntletLoopRoomPresence.packPresence);
+
+    var running = false;
+    var pollTimer = null;
+    var lastSend = 0;
+    var ws = null;
+    var wsReady = false;
+    var usePoll = true;
+    var hiddenSince = 0;
+    /** @type {object[]} */
+    var remoteShips = [];
+    var listeners = [];
+    var localPublicId = "";
+    var lastPresence = null;
+    var handled401 = false;
+
+    function notify() {
+      var i;
+      for (i = 0; i < listeners.length; i++) {
+        listeners[i](remoteShips);
+      }
+    }
+
+    /**
+     * @param {object[]} ships
+     */
+    function applyShips(ships) {
+      if (!Array.isArray(ships)) {
+        return;
+      }
+      var filtered = [];
+      var i;
+      for (i = 0; i < ships.length; i++) {
+        var s = ships[i];
+        if (!s || typeof s.publicId !== "string") {
+          continue;
+        }
+        if (s.publicId === localPublicId) {
+          continue;
+        }
+        filtered.push({
+          publicId: s.publicId,
+          nickname: s.nickname || "",
+          lane: typeof s.lane === "number" ? s.lane : 50,
+          shipY: typeof s.shipY === "number" ? s.shipY : 82,
+          score: typeof s.score === "number" ? s.score : 0,
+          fireFlash: !!s.fireFlash,
+        });
+      }
+      remoteShips = filtered;
+      notify();
+    }
+
+    /**
+     * @param {string | null} msg
+     */
+    function setRoomError(msg) {
+      var el = document.getElementById(ROOM_ERROR_ID);
+      if (!el) {
+        el = document.createElement("div");
+        el.id = ROOM_ERROR_ID;
+        el.setAttribute("role", "status");
+        document.body.appendChild(el);
+      }
+      if (!msg) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
+      }
+      el.textContent = msg;
+      el.style.display = "block";
+    }
+
+    function wsUrl() {
+      if (typeof location === "undefined") {
+        return "ws://127.0.0.1:8787/v1/room/loop/ws";
+      }
+      var proto = location.protocol === "https:" ? "wss:" : "ws:";
+      return proto + "//" + location.host + "/v1/room/loop/ws";
+    }
+
+    function tryWebSocket() {
+      if (typeof WebSocket === "undefined") {
+        usePoll = true;
+        return;
+      }
+      try {
+        ws = new WebSocket(wsUrl());
+        ws.addEventListener("open", function () {
+          var stored = sessionClient && sessionClient.getSession();
+          if (!stored || !stored.token) {
+            return;
+          }
+          ws.send(JSON.stringify({ type: "auth", token: stored.token }));
+        });
+        ws.addEventListener("message", function (ev) {
+          var data;
+          try {
+            data = JSON.parse(String(ev.data));
+          } catch (e) {
+            return;
+          }
+          if (data.type === "auth-ok") {
+            wsReady = true;
+            usePoll = false;
+            setRoomError(null);
+          }
+          if (data.type === "presence" && data.ships) {
+            applyShips(data.ships);
+          }
+        });
+        ws.addEventListener("close", function () {
+          wsReady = false;
+          usePoll = true;
+          schedulePoll();
+        });
+        ws.addEventListener("error", function () {
+          wsReady = false;
+          usePoll = true;
+          schedulePoll();
+        });
+      } catch (e) {
+        usePoll = true;
+      }
+    }
+
+    function clearPoll() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function schedulePoll() {
+      clearPoll();
+      if (!running || !usePoll) {
+        return;
+      }
+      pollTimer = setInterval(pollOnce, POLL_MS);
+      pollOnce();
+    }
+
+    function pollOnce() {
+      if (!sessionClient) {
+        return;
+      }
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
+      sessionClient
+        .fetchWithAuth("/v1/room/loop", { method: "GET" })
+        .then(function (res) {
+          if (res.status === 401) {
+            return handle401();
+          }
+          if (!res.ok) {
+            setRoomError("Room idle.");
+            return;
+          }
+          setRoomError(null);
+          return res.json().then(function (data) {
+            applyShips(data.ships || []);
+          });
+        })
+        .catch(function () {
+          setRoomError("Room idle.");
+        });
+    }
+
+    function handle401() {
+      if (handled401 || !sessionClient) {
+        return Promise.resolve();
+      }
+      handled401 = true;
+      return sessionClient.initSession().then(function () {
+        handled401 = false;
+        tryWebSocket();
+      });
+    }
+
+  /**
+   * @param {object} presenceFields
+   * @param {boolean} idle
+   */
+    function sendPresence(presenceFields, idle) {
+      if (!running || !sessionClient || !packPresence) {
+        return;
+      }
+      var now = Date.now();
+      if (now - lastSend < SEND_MIN_MS) {
+        return;
+      }
+      lastSend = now;
+      var stored = sessionClient.getSession();
+      if (!stored || !stored.token) {
+        return;
+      }
+      localPublicId = stored.publicId || localPublicId;
+      var body = {
+        presence: packPresence(presenceFields, localPublicId),
+        idle: !!idle,
+      };
+      lastPresence = body.presence;
+      if (ws && wsReady && ws.readyState === WebSocket.OPEN) {
+        body.type = "update";
+        ws.send(JSON.stringify(body));
+        return;
+      }
+      sessionClient
+        .fetchWithAuth("/v1/room/loop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        .then(function (res) {
+          if (res.status === 401) {
+            return handle401();
+          }
+          if (!res.ok) {
+            setRoomError("Room idle.");
+            return;
+          }
+          setRoomError(null);
+          return res.json().then(function (data) {
+            applyShips(data.ships || []);
+          });
+        })
+        .catch(function () {
+          setRoomError("Room idle.");
+        });
+    }
+
+    function bindVisibility() {
+      if (typeof document === "undefined") {
+        return;
+      }
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          hiddenSince = Date.now();
+          sendPresence(lastPresence || {}, true);
+          clearPoll();
+        } else {
+          hiddenSince = 0;
+          schedulePoll();
+          if (lastPresence) {
+            sendPresence(lastPresence, false);
+          }
+        }
+      });
+    }
+
+    function start() {
+      if (running) {
+        return;
+      }
+      running = true;
+      handled401 = false;
+      bindVisibility();
+      tryWebSocket();
+      schedulePoll();
+    }
+
+    function stop() {
+      running = false;
+      clearPoll();
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {
+          /* ignore */
+        }
+        ws = null;
+        wsReady = false;
+      }
+      if (sessionClient) {
+        sessionClient
+          .fetchWithAuth("/v1/room/loop", { method: "DELETE" })
+          .catch(function () {
+            /* ignore */
+          });
+      }
+    }
+
+    /**
+     * @param {object} presenceFields
+     */
+    function tick(presenceFields) {
+      if (!running) {
+        return;
+      }
+      if (typeof document !== "undefined" && document.hidden) {
+        if (hiddenSince && Date.now() - hiddenSince > HIDDEN_IDLE_MS) {
+          sendPresence(presenceFields, true);
+        }
+        return;
+      }
+      sendPresence(presenceFields, false);
+    }
+
+    return {
+      start: start,
+      stop: stop,
+      tick: tick,
+      getRemoteShips: function () {
+        return remoteShips;
+      },
+      subscribe: function (fn) {
+        listeners.push(fn);
+        return function () {
+          var idx = listeners.indexOf(fn);
+          if (idx >= 0) {
+            listeners.splice(idx, 1);
+          }
+        };
+      },
+      setRoomError: setRoomError,
+    };
+  }
+
+  var api = {
+    createRoomClient: createRoomClient,
+    POLL_MS: POLL_MS,
+    SEND_MIN_MS: SEND_MIN_MS,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopRoom = api;
+  }
+})();
+/**
+ * Optional sci-fi frame overlay. Off by default. Parked toggle only.
+ */
+(function cockpitModule() {
+  "use strict";
+
+  var STORAGE_KEY = "gauntlet-loop-cockpit-v1";
+
+  /**
+   * @param {{ getMode: () => string, modeParked: string, onResize?: () => void }} opts
+   */
+  function attachCockpit(opts) {
+    var enabled = false;
+    try {
+      if (/(?:\?|&)cockpit=1(?:&|$)/.test(location.search)) {
+        enabled = true;
+      } else if (localStorage.getItem(STORAGE_KEY) === "1") {
+        enabled = true;
+      }
+    } catch (e) {
+      enabled = false;
+    }
+
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.id = "cockpit-toggle";
+    toggle.textContent = "Cockpit off";
+    toggle.style.display = "none";
+
+    var bar = document.getElementById("mode-switch");
+    if (bar) {
+      bar.appendChild(toggle);
+    } else {
+      document.body.appendChild(toggle);
+    }
+
+    function syncToggleUi() {
+      var parked = opts.getMode() === opts.modeParked;
+      toggle.style.display = parked ? "inline-block" : "none";
+      toggle.textContent = enabled ? "Cockpit on" : "Cockpit off";
+      toggle.setAttribute("aria-pressed", enabled ? "true" : "false");
+    }
+
+    toggle.addEventListener("click", function () {
+      if (opts.getMode() !== opts.modeParked) {
+        return;
+      }
+      enabled = !enabled;
+      try {
+        localStorage.setItem(STORAGE_KEY, enabled ? "1" : "0");
+      } catch (e) {
+        /* ignore */
+      }
+      syncToggleUi();
+      if (opts.onResize) {
+        opts.onResize();
+      }
+    });
+
+    /**
+     * @param {CanvasRenderingContext2D} ctx
+     * @param {number} w css pixels
+     * @param {number} h css pixels
+     */
+    function drawCockpitFrame(ctx, w, h) {
+      if (!enabled) {
+        return;
+      }
+      ctx.save();
+      var pad = 14;
+      ctx.strokeStyle = "rgba(94, 234, 212, 0.55)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pad, pad + 18);
+      ctx.lineTo(pad, pad);
+      ctx.lineTo(pad + 24, pad);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(w - pad - 24, pad);
+      ctx.lineTo(w - pad, pad);
+      ctx.lineTo(w - pad, pad + 18);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pad, h - pad - 18);
+      ctx.lineTo(pad, h - pad);
+      ctx.lineTo(pad + 28, h - pad);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(w - pad - 28, h - pad);
+      ctx.lineTo(w - pad, h - pad);
+      ctx.lineTo(w - pad, h - pad - 18);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(94, 234, 212, 0.04)";
+      var i;
+      for (i = 0; i < h; i += 4) {
+        ctx.fillRect(0, i, w, 1);
+      }
+      ctx.restore();
+    }
+
+    return {
+      isEnabled: function () {
+        return enabled;
+      },
+      setEnabled: function (on) {
+        enabled = !!on;
+        syncToggleUi();
+      },
+      toggle: function () {
+        enabled = !enabled;
+        syncToggleUi();
+        return enabled;
+      },
+      syncToggleUi: syncToggleUi,
+      drawCockpitFrame: drawCockpitFrame,
+    };
+  }
+
+  var api = {
+    attachCockpit: attachCockpit,
+    STORAGE_KEY: STORAGE_KEY,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopCockpit = api;
+  }
+})();
+/**
+ * Web Audio SFX. Resume context on first user gesture. No remote files.
+ */
+(function audioModule() {
+  "use strict";
+
+  /**
+   * @returns {{ resumeOnUserGesture: () => void, getState: () => string, playUiBlip: () => void }}
+   */
+  function createAudio() {
+    /** @type {AudioContext | null} */
+    var actx = null;
+    var unlocked = false;
+
+  /**
+   * @param {number} freq
+   * @param {number} durationSec
+   * @param {number} gain
+   */
+    function tone(freq, durationSec, gain) {
+      if (!actx || actx.state !== "running") {
+        return;
+      }
+      try {
+        var osc = actx.createOscillator();
+        var amp = actx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        amp.gain.value = gain;
+        osc.connect(amp);
+        amp.connect(actx.destination);
+        var t0 = actx.currentTime;
+        amp.gain.setValueAtTime(gain, t0);
+        amp.gain.exponentialRampToValueAtTime(0.0001, t0 + durationSec);
+        osc.start(t0);
+        osc.stop(t0 + durationSec + 0.02);
+      } catch (e) {
+        /* fail quietly */
+      }
+    }
+
+    function playUiBlip() {
+      tone(440, 0.08, 0.06);
+    }
+
+    function resumeOnUserGesture() {
+      if (unlocked && actx && actx.state === "running") {
+        return;
+      }
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) {
+          return;
+        }
+        if (!actx) {
+          actx = new AC();
+        }
+        var resume = actx.resume();
+        if (resume && typeof resume.then === "function") {
+          resume
+            .then(function () {
+              unlocked = true;
+              playUiBlip();
+            })
+            .catch(function () {
+              /* blocked */
+            });
+        } else {
+          unlocked = true;
+          playUiBlip();
+        }
+      } catch (e) {
+        /* blocked */
+      }
+    }
+
+    function getState() {
+      if (!actx) {
+        return "none";
+      }
+      return actx.state;
+    }
+
+    return {
+      resumeOnUserGesture: resumeOnUserGesture,
+      playUiBlip: playUiBlip,
+      getState: getState,
+    };
+  }
+
+  var api = {
+    createAudio: createAudio,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+  }
+  if (typeof globalThis !== "undefined") {
+    globalThis.GauntletLoopAudio = api;
+  }
+})();
+/**
+ * Thin wiring: UI, inputs, queue, mode filter, combat, sim, render.
+ */
+(function mainModule() {
+  "use strict";
+
+  function isProbeUrl() {
+    if (typeof location === "undefined") {
+      return false;
+    }
+    return /(?:\?|&)probe=1(?:&|$)/.test(location.search);
+  }
+
+  function bootGame() {
+    var command = globalThis.GauntletLoopCommand;
+    var mode = globalThis.GauntletLoopMode;
+    var parseIntent = globalThis.GauntletLoopParseIntent;
+    var simApi = globalThis.GauntletLoopSim;
+    var render = globalThis.GauntletLoopRender;
+    var resize = globalThis.GauntletLoopResize;
+    var inputKb = globalThis.GauntletLoopInputKeyboard;
+    var inputTyped = globalThis.GauntletLoopInputTyped;
+    var inputGamepad = globalThis.GauntletLoopInputGamepad;
+    var inputTouch = globalThis.GauntletLoopInputTouch;
+    var inputVoice = globalThis.GauntletLoopInputVoice;
+    var combatApi = globalThis.GauntletLoopCombat;
+    var loop = globalThis.GauntletLoopLoop;
+    var uiApi = globalThis.GauntletLoopUi;
+    var sessionClient = globalThis.GauntletLoopSession;
+    var terrainApi = globalThis.GauntletLoopTerrain;
+    var mapApi = globalThis.GauntletLoopMap;
+    var locationApi = globalThis.GauntletLoopLocation;
+    var roomApi = globalThis.GauntletLoopRoom;
+    var roomPresence = globalThis.GauntletLoopRoomPresence;
+    var audioApi = globalThis.GauntletLoopAudio;
+    var cockpitApi = globalThis.GauntletLoopCockpit;
+
+    if (
+      !command ||
+      !mode ||
+      !parseIntent ||
+      !simApi ||
+      !render ||
+      !resize ||
+      !inputKb ||
+      !inputTyped ||
+      !inputGamepad ||
+      !inputTouch ||
+      !inputVoice ||
+      !combatApi ||
+      !loop ||
+      !uiApi ||
+      !sessionClient ||
+      !terrainApi ||
+      !mapApi ||
+      !locationApi ||
+      !roomApi ||
+      !roomPresence ||
+      !audioApi ||
+      !cockpitApi
+    ) {
+      return;
+    }
+
+    var probeRoot = document.getElementById("probe-root");
+    if (probeRoot) {
+      probeRoot.style.display = "none";
+    }
+
+    var canvas = document.getElementById("game");
+    if (!canvas || !(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+    canvas.style.display = "block";
+
+    var ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+
+    var queue = command.createQueue();
+    var modeState = mode.createModeState();
+
+    /** @type {{ steer: number, source: string | null }} */
+    var control = { steer: 0, source: null };
+
+    /** @type {{ locationOptIn: boolean, physicalKeyboardSeen: boolean }} */
+    var session = {
+      locationOptIn: false,
+      physicalKeyboardSeen: false,
+    };
+
+    var locationService = locationApi.createLocationService({
+      sessionClient: sessionClient,
+    });
+    /** @type {object} */
+    var locationFix = locationApi.emptyFix();
+    /** @type {object} */
+    var regionFlavor = terrainApi.GENERIC;
+
+    locationService.subscribe(function (fix) {
+      locationFix = fix;
+      regionFlavor = terrainApi.regionFlavor(fix);
+    });
+
+    var roomClient = roomApi.createRoomClient({
+      sessionClient: sessionClient,
+      packPresence: roomPresence,
+    });
+    /** @type {object[]} */
+    var remoteShips = [];
+    roomClient.subscribe(function (ships) {
+      remoteShips = ships;
+    });
+
+    var sim = simApi.createSim();
+    var combat = combatApi.createCombat();
+    var viewport = resize.createViewport(sim.worldWidth, sim.worldHeight);
+    var audio = audioApi.createAudio();
+
+    function getMode() {
+      return modeState.mode;
+    }
+
+    function handleResize() {
+      resize.applyResize(canvas, viewport, ctx);
+    }
+
+    var cockpit = null;
+
+    function enqueueParsed(cmds) {
+      var i;
+      for (i = 0; i < cmds.length; i++) {
+        command.enqueue(queue, cmds[i]);
+      }
+    }
+
+    function enqueueVoice(cmds) {
+      var i;
+      for (i = 0; i < cmds.length; i++) {
+        command.enqueue(queue, cmds[i]);
+      }
+    }
+
+    var touch = inputTouch.attachTouch(control, getMode, mode, mode, command, queue);
+    var pad = inputGamepad.attachGamepad(control, getMode, mode, command, queue, {
+      onConnected: function () {
+        if (getMode() === mode.MODE_PARKED) {
+          touch.hide();
+        }
+      },
+    });
+
+    var typed = inputTyped.attachTypedInput({
+      parseIntent: parseIntent.parseIntent,
+      onCommands: enqueueParsed,
+    });
+
+    var voice = inputVoice.attachVoiceInput({
+      parseIntent: parseIntent.parseIntent,
+      onVoiceCommands: enqueueVoice,
+      getMode: getMode,
+      modeBoot: mode.MODE_BOOT,
+    });
+
+    function syncInputLayers() {
+      var m = getMode();
+      if (m === mode.MODE_BOOT) {
+        typed.setVisible(false);
+        touch.hide();
+        control.steer = 0;
+        control.source = null;
+        voice.syncForMode();
+        return;
+      }
+      if (m === mode.MODE_MOTION) {
+        touch.hide();
+        control.steer = 0;
+        control.source = null;
+        if (session.physicalKeyboardSeen) {
+          typed.setVisible(true);
+        } else {
+          typed.setVisible(false);
+        }
+      } else {
+        typed.setVisible(true);
+        touch.show();
+      }
+      voice.syncForMode();
+    }
+
+    var kb = inputKb.attachKeyboard(control, getMode, mode, command, queue, {
+      onGameplayKey: function () {
+        session.physicalKeyboardSeen = true;
+        if (getMode() === mode.MODE_PARKED) {
+          touch.hide();
+        }
+        syncInputLayers();
+      },
+    });
+
+    function applyLocationFlag(optIn) {
+      session.locationOptIn = !!optIn;
+      locationService.setOptIn(!!optIn);
+    }
+
+    var ui = null;
+
+    function maybeStartRoom() {
+      if (getMode() === mode.MODE_BOOT) {
+        return;
+      }
+      if (!sessionState.session) {
+        return;
+      }
+      roomClient.start();
+    }
+
+    function onParkedGesture() {
+      audio.resumeOnUserGesture();
+      voice.armUserGesture();
+    }
+
+    function enterParked(locationOptIn) {
+      onParkedGesture();
+      applyLocationFlag(locationOptIn);
+      mode.setSessionMode(modeState, mode.MODE_PARKED);
+      syncInputLayers();
+      maybeStartRoom();
+      if (cockpit) {
+        cockpit.syncToggleUi();
+      }
+      if (ui) {
+        ui.syncSwitchUi();
+      }
+    }
+
+    function enterMotion(locationOptIn) {
+      applyLocationFlag(locationOptIn);
+      mode.setSessionMode(modeState, mode.MODE_MOTION);
+      syncInputLayers();
+      maybeStartRoom();
+      if (cockpit) {
+        cockpit.syncToggleUi();
+      }
+      if (ui) {
+        ui.syncSwitchUi();
+      }
+    }
+
+    cockpit = cockpitApi.attachCockpit({
+      getMode: getMode,
+      modeParked: mode.MODE_PARKED,
+      onResize: handleResize,
+    });
+
+    ui = uiApi.attachBootUi({
+      getMode: getMode,
+      onChooseParked: function (loc) {
+        enterParked(loc);
+      },
+      onChooseMotion: function (loc) {
+        enterMotion(loc);
+      },
+      onSwitchParked: function () {
+        enterParked(session.locationOptIn);
+      },
+      onSwitchMotion: function () {
+        enterMotion(session.locationOptIn);
+      },
+    });
+
+    syncInputLayers();
+
+    /** @type {{ session: object | null, error: string | null }} */
+    var sessionState = { session: null, error: null };
+    sessionClient.initSession().then(function (result) {
+      sessionState = result;
+      maybeStartRoom();
+    });
+
+    function runTick(dt) {
+      pad.poll();
+      var cmds = command.drainForTick(queue);
+      var i;
+      for (i = 0; i < cmds.length; i++) {
+        var allowed = mode.filterCommand(cmds[i], modeState.mode);
+        if (allowed) {
+          combatApi.handleCommand(combat, sim, allowed);
+        }
+      }
+      simApi.step(sim, dt, control.steer);
+      combatApi.step(combat, sim, dt);
+    }
+
+    window.addEventListener("resize", handleResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", handleResize);
+    }
+    handleResize();
+
+    loop.startGameLoop({
+      onTick: function (dt) {
+        runTick(dt);
+      },
+      onFrame: function () {
+        touch.syncDisplay();
+        var nowSec = performance.now() / 1000;
+        roomClient.tick({
+          lane: sim.playerX,
+          shipY: sim.playerY,
+          score: combat.score,
+          fireFlash:
+            combat.fireFlashUntil > nowSec ||
+            combat.specialFlashUntil > nowSec,
+        });
+        render.drawFrame(ctx, sim, viewport, combat, {
+          flavor: regionFlavor,
+          locationFix: locationFix,
+          mapApi: mapApi,
+          remoteShips: remoteShips,
+          cockpit: cockpit,
+        });
+      },
+    });
+
+    globalThis.GauntletLoopGame = {
+      getMode: function () {
+        return getMode();
+      },
+      getSession: function () {
+        return {
+          locationOptIn: session.locationOptIn,
+          physicalKeyboardSeen: session.physicalKeyboardSeen,
+        };
+      },
+      getAuthSession: function () {
+        var stored = sessionClient.getSession();
+        if (!stored) {
+          return null;
+        }
+        return {
+          sessionId: stored.sessionId,
+          publicId: stored.publicId,
+          expiresAt: stored.expiresAt,
+          hasToken: !!stored.token,
+        };
+      },
+      getSessionWire: function () {
+        return {
+          client: sessionState,
+          stored: sessionClient.getSession(),
+        };
+      },
+      getLocationFix: function () {
+        return locationService.getFix();
+      },
+      getRegionFlavor: function () {
+        return regionFlavor;
+      },
+      getRemoteShips: function () {
+        return roomClient.getRemoteShips();
+      },
+      remintSessionAfter401: function () {
+        sessionClient.clearStored();
+        return sessionClient.initSession();
+      },
+      chooseParked: function (locationOptIn) {
+        enterParked(!!locationOptIn);
+      },
+      chooseVoiceOnly: function (locationOptIn) {
+        enterMotion(!!locationOptIn);
+      },
+      getSim: function () {
+        return { playerX: sim.playerX, playerY: sim.playerY };
+      },
+      getViewport: function () {
+        return {
+          cssWidth: viewport.cssWidth,
+          cssHeight: viewport.cssHeight,
+          dpr: viewport.dpr,
+          worldScale: viewport.worldScale,
+        };
+      },
+      getControl: function () {
+        return { steer: control.steer, source: control.source };
+      },
+      getCombat: function () {
+        return {
+          lockEnemyId: combat.lockEnemyId,
+          lockColor: combat.lockColor,
+          lastHitEnemyId: combat.lastHitEnemyId,
+          score: combat.score,
+          weaponCooldown: combat.weaponCooldown,
+          specialCooldown: combat.specialCooldown,
+          enemyCount: combat.enemies.length,
+          enemies: combat.enemies.map(function (e) {
+            return {
+              id: e.id,
+              x: e.x,
+              y: e.y,
+              color: e.color,
+              alive: e.alive,
+            };
+          }),
+        };
+      },
+      isTouchVisible: function () {
+        return touch.isVisible();
+      },
+      isTypedVisible: function () {
+        return typed.wrapElement.style.display !== "none";
+      },
+      placeTestEnemies: function (specs) {
+        combatApi.placeTestEnemies(combat, sim, specs);
+      },
+      submitTyped: function (text) {
+        return typed.submitText(text);
+      },
+      tickSeconds: function (seconds) {
+        var slice = 1 / 60;
+        var left = seconds;
+        while (left > 0) {
+          var dt = left < slice ? left : slice;
+          left -= dt;
+          runTick(dt);
+        }
+      },
+      pressFire: function () {
+        kb.pressFire();
+      },
+      pressSpecial: function () {
+        kb.pressSpecial();
+      },
+      injectGamepadSteer: function (axisX) {
+        pad.injectTestGamepad({ axes: [axisX, 0], buttons: [] });
+        if (getMode() === mode.MODE_PARKED) {
+          touch.hide();
+        }
+        pad.poll();
+      },
+      injectGamepadFire: function () {
+        pad.injectTestGamepad({ axes: [0, 0], buttons: [true] });
+        pad.poll();
+        pad.injectTestGamepad({ axes: [0, 0], buttons: [true] });
+        pad.poll();
+      },
+      simulateGamepadDisconnect: function () {
+        pad.simulateDisconnect();
+      },
+      getVoice: function () {
+        return {
+          available: voice.isAvailable(),
+          hud: voice.getHudText(),
+          listening: voice.isListening(),
+          listenVisible: voice.isListenVisible(),
+        };
+      },
+      simulateListenGesture: function () {
+        return voice.simulateListenGesture();
+      },
+      deliverVoiceTranscript: function (text) {
+        return voice.deliverFinalTranscript(text);
+      },
+      forceVoiceUnavailable: function () {
+        voice.forcePlatformUnavailable();
+        voice.syncForMode();
+      },
+      getAudioState: function () {
+        return audio.getState();
+      },
+      resumeAudioOnGesture: function () {
+        audio.resumeOnUserGesture();
+      },
+      isCockpitEnabled: function () {
+        return cockpit.isEnabled();
+      },
+      toggleCockpit: function () {
+        if (getMode() !== mode.MODE_PARKED) {
+          return cockpit.isEnabled();
+        }
+        return cockpit.toggle();
+      },
+      syncCockpitUi: function () {
+        cockpit.syncToggleUi();
+      },
+    };
+  }
+
+  function boot() {
+    if (isProbeUrl()) {
+      return;
+    }
+    bootGame();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();
+/**
+ * Phase 0 capability probe. Prints a table of browser API availability.
+ */
+(function probeModule(global) {
+  "use strict";
+
+  /** @typedef {{ id: string, label: string, pass: boolean, detail: string }} ProbeRow */
+
+  /**
+   * @returns {ProbeRow[]}
+   */
+  function syncRows() {
+    var canvasPass = false;
+    var canvasDetail = "missing";
+    try {
+      var c = document.createElement("canvas");
+      var ctx = c.getContext("2d");
+      if (ctx) {
+        canvasPass = true;
+        canvasDetail = "getContext('2d') ok";
+      }
+    } catch (e) {
+      canvasDetail = String(e && e.message ? e.message : e);
+    }
+
+    var rafPass =
+      typeof global.requestAnimationFrame === "function" ||
+      typeof global.webkitRequestAnimationFrame === "function";
+    var rafDetail = rafPass ? "available" : "missing";
+
+    var gamepadPass = typeof navigator.getGamepads === "function";
+    var gamepadDetail = gamepadPass ? "navigator.getGamepads" : "missing";
+
+    var speechCtor =
+      global.SpeechRecognition || global.webkitSpeechRecognition || null;
+    var speechPass = speechCtor !== null;
+    var speechDetail = speechPass
+      ? global.SpeechRecognition
+        ? "SpeechRecognition"
+        : "webkitSpeechRecognition"
+      : "missing";
+
+    var gumPass = false;
+    var gumDetail = "missing";
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+      gumPass = true;
+      gumDetail = "mediaDevices.getUserMedia";
+    } else if (navigator.getUserMedia || navigator.webkitGetUserMedia) {
+      gumPass = true;
+      gumDetail = "legacy getUserMedia";
+    }
+
+    var geoPass = typeof navigator.geolocation !== "undefined" && !!navigator.geolocation;
+    var geoDetail = geoPass ? "navigator.geolocation" : "missing";
+
+    var wsPass = typeof global.WebSocket === "function";
+    var wsDetail = wsPass ? "WebSocket constructor" : "missing";
+
+    var acPass = false;
+    var acDetail = "missing";
+    if (typeof global.AudioContext === "function") {
+      acPass = true;
+      acDetail = "AudioContext";
+    } else if (typeof global.webkitAudioContext === "function") {
+      acPass = true;
+      acDetail = "webkitAudioContext";
+    }
+
+    var vvPass = typeof global.visualViewport !== "undefined";
+    var vvDetail = vvPass ? "visualViewport present" : "missing";
+
+    var touchPass =
+      "ontouchstart" in global ||
+      (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+    var touchDetail = touchPass
+      ? "ontouchstart or maxTouchPoints=" + (navigator.maxTouchPoints || 0)
+      : "no touch surface reported";
+
+    var keyPass =
+      typeof global.KeyboardEvent === "function" &&
+      typeof document.addEventListener === "function";
+    var keyDetail = keyPass
+      ? "KeyboardEvent and keydown listeners"
+      : "missing";
+
+    return [
+      { id: "canvas-2d", label: "Canvas 2D", pass: canvasPass, detail: canvasDetail },
+      {
+        id: "raf",
+        label: "requestAnimationFrame",
+        pass: rafPass,
+        detail: rafDetail,
+      },
+      { id: "gamepad", label: "Gamepad API", pass: gamepadPass, detail: gamepadDetail },
+      {
+        id: "speech",
+        label: "SpeechRecognition",
+        pass: speechPass,
+        detail: speechDetail,
+      },
+      {
+        id: "getusermedia",
+        label: "getUserMedia",
+        pass: gumPass,
+        detail: gumDetail,
+      },
+      {
+        id: "geolocation",
+        label: "navigator.geolocation",
+        pass: geoPass,
+        detail: geoDetail,
+      },
+      { id: "websocket", label: "WebSocket", pass: wsPass, detail: wsDetail },
+      { id: "audio", label: "AudioContext", pass: acPass, detail: acDetail },
+      {
+        id: "fetch-health",
+        label: "fetch /v1/health",
+        pass: false,
+        detail: "pending",
+      },
+      {
+        id: "visual-viewport",
+        label: "visualViewport",
+        pass: vvPass,
+        detail: vvDetail,
+      },
+      { id: "touch", label: "Touch events", pass: touchPass, detail: touchDetail },
+      {
+        id: "keyboard",
+        label: "Keyboard events",
+        pass: keyPass,
+        detail: keyDetail,
+      },
+    ];
+  }
+
+  /**
+   * @param {ProbeRow[]} rows
+   */
+  function renderTable(rows) {
+    var root = document.getElementById("probe-root");
+    if (!root) {
+      return;
+    }
+    var html = [
+      "<h1>Gauntlet Loop: capability probe (Phase 0)</h1>",
+      "<p class=\"probe-note\">Feature detect only. No gameplay.</p>",
+      "<table class=\"probe-table\" aria-label=\"Browser capability probe\">",
+      "<thead><tr><th>Capability</th><th>Result</th><th>Detail</th></tr></thead>",
+      "<tbody>",
+    ];
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var cls = row.pass ? "pass" : "fail";
+      var status = row.pass ? "pass" : "fail";
+      html.push(
+        "<tr data-id=\"" +
+          row.id +
+          "\"><td>" +
+          row.label +
+          "</td><td class=\"" +
+          cls +
+          "\">" +
+          status +
+          "</td><td class=\"detail\">" +
+          escapeHtml(row.detail) +
+          "</td></tr>"
+      );
+    }
+    html.push("</tbody></table>");
+    root.innerHTML = html.join("");
+  }
+
+  /**
+   * @param {string} text
+   * @returns {string}
+   */
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  /**
+   * @param {ProbeRow[]} rows
+   */
+  function updateRow(rows, id, pass, detail) {
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].id === id) {
+        rows[i].pass = pass;
+        rows[i].detail = detail;
+        break;
+      }
+    }
+    renderTable(rows);
+  }
+
+  /**
+   * @param {ProbeRow[]} rows
+   */
+  function runFetchHealth(rows) {
+    if (typeof fetch !== "function") {
+      updateRow(rows, "fetch-health", false, "fetch missing");
+      return;
+    }
+    fetch("/v1/health", { method: "GET", cache: "no-store" })
+      .then(function (res) {
+        var ok = res.ok;
+        updateRow(
+          rows,
+          "fetch-health",
+          ok,
+          "HTTP " + res.status + (ok ? " ok" : " not ok")
+        );
+      })
+      .catch(function (err) {
+        var msg = err && err.message ? err.message : String(err);
+        updateRow(rows, "fetch-health", false, msg);
+      });
+  }
+
+  function isProbeUrl() {
+    if (typeof location === "undefined") {
+      return false;
+    }
+    return /(?:\?|&)probe=1(?:&|$)/.test(location.search);
+  }
+
+  function boot() {
+    if (!isProbeUrl()) {
+      return;
+    }
+    var canvas = document.getElementById("game");
+    if (canvas) {
+      canvas.style.display = "none";
+    }
+    var root = document.getElementById("probe-root");
+    if (root) {
+      root.style.display = "block";
+    }
+    var rows = syncRows();
+    renderTable(rows);
+    runFetchHealth(rows);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})(typeof window !== "undefined" ? window : globalThis);
+
+  </script>
+</body>
+</html>

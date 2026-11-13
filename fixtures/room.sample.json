@@ -1,0 +1,21 @@
+{
+  "room": "loop",
+  "ships": [
+    {
+      "publicId": "Pilot-4K2Z",
+      "nickname": "",
+      "lane": 52,
+      "shipY": 82,
+      "score": 120,
+      "fireFlash": false
+    },
+    {
+      "publicId": "Pilot-9M3P",
+      "nickname": "Scout",
+      "lane": 38,
+      "shipY": 82,
+      "score": 45,
+      "fireFlash": true
+    }
+  ]
+}
