@@ -1,8 +1,8 @@
 {
   "latitude": null,
   "longitude": null,
-  "location_name": "Location tool unavailable",
+  "location_name": "get_location tool not available in connected services",
   "road": null,
-  "timestamp": "2026-11-13T09:21:04Z",
+  "timestamp": "2026-11-13T11:21:00Z",
   "speed": null
 }
