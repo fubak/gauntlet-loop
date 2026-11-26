@@ -1,8 +1,8 @@
 {
-  "latitude": 38.8951,
-  "longitude": -77.0364,
-  "location_name": "Golden Triangle, Washington, District of Columbia, United States",
-  "road": "Ellipse Road Northwest",
-  "timestamp": "2026-11-26T01:23:23Z",
+  "latitude": null,
+  "longitude": null,
+  "location_name": "Location tool unavailable",
+  "road": null,
+  "timestamp": "2026-11-26T04:16:00Z",
   "speed": null
 }
